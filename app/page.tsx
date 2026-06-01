@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "./lib-client";
 import Compose from "./components/Compose";
 import Posts from "./components/Posts";
+import Calendar from "./components/Calendar";
 import Engage from "./components/Engage";
 import Analytics from "./components/Analytics";
 
@@ -19,7 +20,7 @@ interface Me {
   } | null;
 }
 
-type Tab = "compose" | "posts" | "engage" | "analytics";
+type Tab = "compose" | "posts" | "calendar" | "engage" | "analytics";
 
 export default function Home() {
   const [me, setMe] = useState<Me | null>(null);
@@ -133,6 +134,7 @@ export default function Home() {
             [
               ["compose", "✍️ Compose"],
               ["posts", "🗂 Posts"],
+              ["calendar", "📅 Calendar"],
               ["engage", "💬 Engage"],
               ["analytics", "📊 Analytics"],
             ] as [Tab, string][]
@@ -151,6 +153,7 @@ export default function Home() {
           <Compose aiEnabled={me.aiEnabled} tokenExpired={me.account.tokenExpired} onChange={bump} />
         )}
         {tab === "posts" && <Posts refreshKey={refreshKey} onChange={bump} />}
+        {tab === "calendar" && <Calendar refreshKey={refreshKey} />}
         {tab === "engage" && <Engage aiEnabled={me.aiEnabled} />}
         {tab === "analytics" && <Analytics refreshKey={refreshKey} />}
       </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAccount, jsonError } from "@/lib/api-helpers";
-import { createEngagement, listEngagements, logEvent } from "@/lib/db";
-import { aiEnabled, draftComment } from "@/lib/ai";
+import { createEngagement, listEngagements, logEvent, getVoiceProfile } from "@/lib/db";
+import { aiEnabled, draftComment, type Voice } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +29,13 @@ export async function POST(req: NextRequest) {
   const sourceText = String(body.sourceText ?? "").trim();
   if (!sourceText) return jsonError("sourceText (the post you're replying to) is required");
 
+  const vp = getVoiceProfile(auth.account.id);
+  const voice: Voice | undefined = vp
+    ? { samples: vp.samples, styleGuide: vp.style_guide }
+    : undefined;
+
   try {
-    const draft = await draftComment({ postText: sourceText, intent: body.intent });
+    const draft = await draftComment({ postText: sourceText, intent: body.intent, voice });
     const engagement = createEngagement({
       account_id: auth.account.id,
       source_text: sourceText,

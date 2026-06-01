@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAccount, jsonError } from "@/lib/api-helpers";
-import { aiEnabled, draftPosts, improvePost } from "@/lib/ai";
+import { aiEnabled, draftPosts, improvePost, humanizeText, type Voice } from "@/lib/ai";
+import { getVoiceProfile } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// Generate post drafts, or improve an existing one.
-//   body: { topic, tone?, audience?, variations? }
-//     -> { drafts: string[] }
-//   body: { draft, instruction }
-//     -> { draft: string }
+// Generate post drafts, improve one, or humanize one — all in the user's voice.
+//   body: { topic, tone?, audience?, variations?, framework? }  -> { drafts: string[] }
+//   body: { draft, instruction }                                -> { draft: string }
+//   body: { humanize: string }                                  -> { draft: string }
 export async function POST(req: NextRequest) {
   const auth = requireAccount();
   if ("error" in auth) return auth.error;
@@ -21,9 +21,20 @@ export async function POST(req: NextRequest) {
     return jsonError("Invalid JSON body");
   }
 
+  // Load the user's saved voice so everything sounds like them.
+  const vp = getVoiceProfile(auth.account.id);
+  const voice: Voice | undefined = vp
+    ? { samples: vp.samples, styleGuide: vp.style_guide }
+    : undefined;
+
   try {
+    if (typeof body.humanize === "string") {
+      const draft = await humanizeText(body.humanize, voice);
+      return NextResponse.json({ draft });
+    }
+
     if (typeof body.draft === "string" && typeof body.instruction === "string") {
-      const draft = await improvePost(body.draft, body.instruction);
+      const draft = await improvePost(body.draft, body.instruction, voice);
       return NextResponse.json({ draft });
     }
 
@@ -34,6 +45,8 @@ export async function POST(req: NextRequest) {
       tone: body.tone,
       audience: body.audience,
       variations: body.variations,
+      framework: typeof body.framework === "string" ? body.framework : undefined,
+      voice,
     });
     return NextResponse.json({ drafts });
   } catch (err: any) {

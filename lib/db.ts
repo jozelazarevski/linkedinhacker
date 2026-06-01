@@ -11,8 +11,15 @@ import path from "node:path";
 // and a lightweight analytics log.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, "studio.db");
+// On Vercel the project filesystem is read-only except for /tmp, so default
+// there when deployed. NOTE: /tmp is ephemeral — data does not persist across
+// cold starts/deploys. For durable storage on Vercel, point DATABASE_PATH at a
+// mounted volume or use a hosted libSQL/Turso DB (see README "Deploying").
+const DEFAULT_DB = process.env.VERCEL
+  ? "/tmp/studio.db"
+  : path.join(process.cwd(), "data", "studio.db");
+const DB_PATH = process.env.DATABASE_PATH || DEFAULT_DB;
+const DATA_DIR = path.dirname(DB_PATH);
 
 let _db: Database.Database | null = null;
 
@@ -71,6 +78,13 @@ function migrate(db: Database.Database) {
       draft_comment   TEXT NOT NULL,                   -- AI-generated comment for review
       status          TEXT NOT NULL DEFAULT 'pending', -- pending | approved | dismissed | used
       created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS voice_profiles (
+      account_id      INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+      samples         TEXT,        -- the user's own example posts (few-shot source)
+      style_guide     TEXT,        -- AI-distilled description of their writing style
       updated_at      INTEGER NOT NULL
     );
 
@@ -291,6 +305,44 @@ export function updateEngagement(
     .prepare(`UPDATE engagements SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
     .run({ ...fields, id, updated_at: Date.now() });
   return getEngagement(id);
+}
+
+// ── Voice profile helpers ─────────────────────────────────────────────────────
+
+export interface VoiceProfile {
+  account_id: number;
+  samples: string | null;
+  style_guide: string | null;
+  updated_at: number;
+}
+
+export function getVoiceProfile(accountId: number): VoiceProfile | undefined {
+  return getDb()
+    .prepare("SELECT * FROM voice_profiles WHERE account_id = ?")
+    .get(accountId) as VoiceProfile | undefined;
+}
+
+export function saveVoiceProfile(input: {
+  account_id: number;
+  samples?: string | null;
+  style_guide?: string | null;
+}): VoiceProfile {
+  const db = getDb();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO voice_profiles (account_id, samples, style_guide, updated_at)
+     VALUES (@account_id, @samples, @style_guide, @now)
+     ON CONFLICT(account_id) DO UPDATE SET
+       samples     = COALESCE(excluded.samples, voice_profiles.samples),
+       style_guide = COALESCE(excluded.style_guide, voice_profiles.style_guide),
+       updated_at  = @now`
+  ).run({
+    account_id: input.account_id,
+    samples: input.samples ?? null,
+    style_guide: input.style_guide ?? null,
+    now,
+  });
+  return getVoiceProfile(input.account_id)!;
 }
 
 // ── Analytics helpers ─────────────────────────────────────────────────────────

@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, localInputToMs } from "../lib-client";
+import Voice from "./Voice";
 
 const MAX = 3000;
+
+interface Template {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  scaffold: string;
+  aiBrief: string;
+}
 
 export default function Compose({
   aiEnabled,
@@ -27,13 +37,31 @@ export default function Compose({
   const [drafts, setDrafts] = useState<string[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
 
+  // Templates
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateId, setTemplateId] = useState("");
+
+  useEffect(() => {
+    api<{ templates: Template[] }>("/api/templates")
+      .then((d) => setTemplates(d.templates))
+      .catch(() => setTemplates([]));
+  }, []);
+
+  const selectedTemplate = templates.find((t) => t.id === templateId);
+
   async function generate() {
     setAiBusy(true);
     setMsg(null);
     try {
       const { drafts } = await api<{ drafts: string[] }>("/api/ai/draft", {
         method: "POST",
-        body: JSON.stringify({ topic, tone, audience, variations: 3 }),
+        body: JSON.stringify({
+          topic,
+          tone,
+          audience,
+          variations: 3,
+          framework: selectedTemplate?.aiBrief,
+        }),
       });
       setDrafts(drafts);
     } catch (e: any) {
@@ -53,6 +81,24 @@ export default function Compose({
         body: JSON.stringify({ draft: text, instruction }),
       });
       setText(draft);
+    } catch (e: any) {
+      setMsg({ kind: "error", text: e.message });
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function humanize() {
+    if (!text.trim()) return;
+    setAiBusy(true);
+    setMsg(null);
+    try {
+      const { draft } = await api<{ draft: string }>("/api/ai/draft", {
+        method: "POST",
+        body: JSON.stringify({ humanize: text }),
+      });
+      setText(draft);
+      setMsg({ kind: "info", text: "Rewritten to sound human and on-voice." });
     } catch (e: any) {
       setMsg({ kind: "error", text: e.message });
     } finally {
@@ -106,12 +152,69 @@ export default function Compose({
         </div>
       )}
 
+      <Voice aiEnabled={aiEnabled} />
+
+      {templates.length > 0 && (
+        <div className="card">
+          <h2>🧩 Post templates</h2>
+          <p className="sub">
+            Start from a proven framework. Insert the scaffold to fill in yourself
+            {aiEnabled ? ", or let the AI write a draft in this shape." : "."}
+          </p>
+          <div className="template-grid">
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`template-chip ${templateId === t.id ? "active" : ""}`}
+                onClick={() => setTemplateId(templateId === t.id ? "" : t.id)}
+                title={t.description}
+              >
+                <span style={{ fontSize: 18 }}>{t.emoji}</span> {t.name}
+              </button>
+            ))}
+          </div>
+          {selectedTemplate && (
+            <div className="list-item" style={{ marginTop: 14 }}>
+              <div className="muted" style={{ marginBottom: 8 }}>
+                {selectedTemplate.description}
+              </div>
+              <div className="body" style={{ fontSize: 13 }}>
+                {selectedTemplate.scaffold}
+              </div>
+              <div className="btn-row">
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setText(selectedTemplate.scaffold);
+                    setMsg({ kind: "info", text: `Inserted the "${selectedTemplate.name}" scaffold below — edit away.` });
+                  }}
+                >
+                  Insert scaffold
+                </button>
+                {aiEnabled && (
+                  <span className="muted" style={{ alignSelf: "center", fontSize: 12 }}>
+                    ↓ This framework will shape AI generation.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {aiEnabled && (
         <div className="card">
           <h2>✨ AI draft assistant</h2>
           <p className="sub">
             Describe what you want to post about. The assistant writes value-first drafts — no
             engagement-bait.
+            {selectedTemplate && (
+              <>
+                {" "}
+                Using the <strong>{selectedTemplate.name}</strong> framework.
+              </>
+            )}
           </p>
           <label>Topic / idea</label>
           <textarea
@@ -190,6 +293,9 @@ export default function Compose({
             </button>
             <button className="ghost" disabled={aiBusy} onClick={() => improve("Add a clear call to discussion at the end without being spammy")}>
               💬 Add CTA
+            </button>
+            <button className="ghost" disabled={aiBusy} onClick={humanize} title="Rewrite to remove AI tells and match your trained voice">
+              🧑 Humanize / match my voice
             </button>
             {aiBusy && <span className="spin" />}
           </div>
