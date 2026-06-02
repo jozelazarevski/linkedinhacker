@@ -11,6 +11,8 @@ interface Target {
   context: string | null;
   draft: string | null;
   note: string | null;
+  tags: string | null;
+  priority: number;
   status: string; // todo | drafted | done | skipped
   created_at: number;
 }
@@ -31,6 +33,20 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
   const [name, setName] = useState("");
   const [context, setContext] = useState("");
   const [note, setNote] = useState("");
+  const [tags, setTags] = useState("");
+
+  // Filtering
+  const [tagFilter, setTagFilter] = useState("");
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  const bookmarklet =
+    `javascript:(function(){var t=encodeURIComponent((window.getSelection&&getSelection().toString())||'');` +
+    `var u=encodeURIComponent(location.href);window.open('${origin}/capture?kind=post&url='+u+'&text='+t,` +
+    `'lgs','width=480,height=420');})();`;
 
   async function load() {
     try {
@@ -56,12 +72,13 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
     try {
       await api("/api/targets", {
         method: "POST",
-        body: JSON.stringify({ kind, url, name, context, note }),
+        body: JSON.stringify({ kind, url, name, context, note, tags }),
       });
       setUrl("");
       setName("");
       setContext("");
       setNote("");
+      setTags("");
       await load();
     } catch (e: any) {
       setErr(e.message);
@@ -116,9 +133,20 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
     await load();
   }
 
-  const visible = sprint
-    ? targets.filter((t) => t.status === "todo" || t.status === "drafted")
-    : targets;
+  const allTags = Array.from(
+    new Set(
+      targets
+        .flatMap((t) => (t.tags || "").split(","))
+        .map((s) => s.trim())
+        .filter(Boolean)
+    )
+  ).sort();
+
+  const visible = targets.filter((t) => {
+    if (sprint && !(t.status === "todo" || t.status === "drafted")) return false;
+    if (tagFilter && !(t.tags || "").split(",").map((s) => s.trim()).includes(tagFilter)) return false;
+    return true;
+  });
   const todoCount = targets.filter((t) => t.status === "todo" || t.status === "drafted").length;
   const pct = Math.min(100, Math.round((engagedToday / DAILY_GOAL) * 100));
 
@@ -131,6 +159,20 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
         straight there). You stay in control of the final click — that&apos;s what keeps your account
         safe and your engagement genuine.
       </div>
+
+      {origin && (
+        <div className="card">
+          <h2>🔖 Quick capture</h2>
+          <p className="sub">
+            Drag this button to your bookmarks bar. While scrolling LinkedIn, select a post&apos;s
+            text and click it to drop that post straight into your queue.
+          </p>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href={bookmarklet} className="bookmarklet" onClick={(e) => e.preventDefault()}>
+            ➕ Add to Growth Studio
+          </a>
+        </div>
+      )}
 
       <div className="card">
         <h2>🎯 Daily engagement sprint</h2>
@@ -174,8 +216,16 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
         </div>
         <label>{kind === "post" ? "Paste the post text (so the draft is relevant)" : "Their headline / about (so the note is personal)"}</label>
         <textarea rows={4} value={context} onChange={(e) => setContext(e.target.value)} />
-        <label>{kind === "post" ? "What should your comment do? (optional)" : "Why connect? (optional)"}</label>
-        <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder={kind === "post" ? "e.g. build on their point with an example" : "e.g. we both work in fintech infra"} />
+        <div className="row">
+          <div>
+            <label>{kind === "post" ? "What should your comment do? (optional)" : "Why connect? (optional)"}</label>
+            <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder={kind === "post" ? "e.g. build on their point with an example" : "e.g. we both work in fintech infra"} />
+          </div>
+          <div>
+            <label>Tags (optional, comma-separated)</label>
+            <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. fintech, founders" />
+          </div>
+        </div>
         {err && <div className="notice error" style={{ marginTop: 10 }}>{err}</div>}
         {msg && <div className="notice info" style={{ marginTop: 10 }}>{msg}</div>}
         <div className="btn-row">
@@ -184,16 +234,38 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
       </div>
 
       <div className="card">
-        <h2>📋 Queue</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <h2 style={{ margin: 0 }}>📋 Queue</h2>
+          {allTags.length > 0 && (
+            <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ width: "auto", minWidth: 160 }}>
+              <option value="">All tags</option>
+              {allTags.map((tg) => (
+                <option key={tg} value={tg}>{tg}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <p className="sub">⭐ a target to push it to the top of your sprint.</p>
         {visible.length === 0 && <p className="muted">Nothing here yet. Add a target above.</p>}
         {visible.map((t) => (
           <div className="list-item" key={t.id}>
             <div className="meta">
+              <button
+                className="ghost"
+                title={t.priority > 0 ? "Remove priority" : "Mark priority"}
+                style={{ padding: "2px 8px", borderColor: t.priority > 0 ? "var(--amber)" : "var(--border)" }}
+                onClick={() => patch(t.id, { priority: t.priority > 0 ? 0 : 1 })}
+              >
+                {t.priority > 0 ? "⭐" : "☆"}
+              </button>
               <span className="pill draft">{t.kind === "person" ? "🤝 connect" : "💬 comment"}</span>
               <span className={`pill ${t.status === "done" ? "approved" : t.status === "skipped" ? "dismissed" : t.status === "drafted" ? "scheduled" : "pending"}`}>
                 {t.status}
               </span>
               {t.name && <span>{t.name}</span>}
+              {(t.tags || "").split(",").map((s) => s.trim()).filter(Boolean).map((tg) => (
+                <span key={tg} className="pill draft">#{tg}</span>
+              ))}
               <span>{fmtDate(t.created_at)}</span>
               {t.url && <a href={t.url} target="_blank" rel="noreferrer">Open on LinkedIn ↗</a>}
             </div>

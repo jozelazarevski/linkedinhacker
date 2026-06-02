@@ -28,6 +28,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (typeof body.draft === "string") fields.draft = body.draft;
   if (typeof body.note === "string") fields.note = body.note;
   if (typeof body.context === "string") fields.context = body.context;
+  if (typeof body.tags === "string") fields.tags = body.tags.trim() || null;
+  if (Number.isFinite(Number(body.priority))) fields.priority = Number(body.priority);
   if (["todo", "drafted", "done", "skipped"].includes(body.status)) fields.status = body.status;
 
   const target = updateTarget(id, fields as any);

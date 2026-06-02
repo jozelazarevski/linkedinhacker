@@ -13,7 +13,98 @@ interface Post {
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export default function Calendar({ refreshKey }: { refreshKey: number }) {
+interface PlanIdea {
+  day: string;
+  time: string;
+  hook: string;
+  idea: string;
+}
+
+function Planner({ onChange }: { onChange: () => void }) {
+  const [themes, setThemes] = useState("");
+  const [audience, setAudience] = useState("");
+  const [plan, setPlan] = useState<PlanIdea[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function generate() {
+    if (!themes.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { plan } = await api<{ plan: PlanIdea[] }>("/api/ai/plan", {
+        method: "POST",
+        body: JSON.stringify({ themes, audience, count: 5 }),
+      });
+      setPlan(plan);
+    } catch (e: any) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDraft(idea: PlanIdea) {
+    try {
+      await api("/api/posts", {
+        method: "POST",
+        body: JSON.stringify({ commentary: `${idea.hook}\n\n${idea.idea}` }),
+      });
+      setMsg(`Saved a draft for ${idea.day}. Polish it in the Compose tab.`);
+      onChange();
+    } catch (e: any) {
+      setMsg(e.message);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>🗓 Plan my week</h2>
+      <p className="sub">
+        Generate a week of voice-matched post ideas, scheduled on high-engagement windows
+        (Tue–Thu mornings). Save any as a draft to refine.
+      </p>
+      <label>Themes / topics to cover this week</label>
+      <textarea
+        rows={2}
+        value={themes}
+        onChange={(e) => setThemes(e.target.value)}
+        placeholder="e.g. lessons from scaling our team, a hiring mistake, why we killed a feature"
+      />
+      <label>Audience (optional)</label>
+      <input type="text" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. startup founders" />
+      {msg && <div className="notice info" style={{ marginTop: 10 }}>{msg}</div>}
+      <div className="btn-row">
+        <button onClick={generate} disabled={busy || !themes.trim()}>
+          {busy ? <span className="spin" /> : "Generate weekly plan"}
+        </button>
+      </div>
+
+      {plan.map((idea, i) => (
+        <div className="list-item" key={i}>
+          <div className="meta">
+            <span className="pill scheduled">📅 {idea.day} · {idea.time}</span>
+          </div>
+          <div className="body" style={{ fontWeight: 600 }}>{idea.hook}</div>
+          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{idea.idea}</div>
+          <div className="btn-row">
+            <button className="secondary" onClick={() => saveDraft(idea)}>Save as draft</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function Calendar({
+  refreshKey,
+  aiEnabled,
+  onChange,
+}: {
+  refreshKey: number;
+  aiEnabled: boolean;
+  onChange: () => void;
+}) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [cursor, setCursor] = useState(() => {
@@ -65,7 +156,9 @@ export default function Calendar({ refreshKey }: { refreshKey: number }) {
   }
 
   return (
-    <div className="card">
+    <>
+      {aiEnabled && <Planner onChange={onChange} />}
+      <div className="card">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2>📅 Content calendar</h2>
         <div className="btn-row" style={{ marginTop: 0 }}>
@@ -118,6 +211,7 @@ export default function Calendar({ refreshKey }: { refreshKey: number }) {
           );
         })}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

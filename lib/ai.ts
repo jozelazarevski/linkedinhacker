@@ -207,6 +207,61 @@ export async function draftConnectionNote(opts: {
   return textOf(msg);
 }
 
+export interface PlanIdea {
+  day: string; // e.g. "Tuesday"
+  time: string; // e.g. "9:00 AM"
+  hook: string; // the opening line
+  idea: string; // what the post is about
+}
+
+/**
+ * Generate a week of post ideas with suggested days/times. Posting windows
+ * follow widely-cited LinkedIn best practices (Tue–Thu mornings), which the
+ * model is told to use.
+ */
+export async function generateWeeklyPlan(opts: {
+  themes: string;
+  count?: number;
+  audience?: string;
+  voice?: Voice;
+}): Promise<PlanIdea[]> {
+  const n = Math.min(Math.max(opts.count ?? 5, 1), 7);
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 1500,
+    system: [
+      "You are a LinkedIn content strategist. Produce a varied weekly plan of post ideas that",
+      "build an authentic audience — mix formats (story, how-to, lesson, contrarian, question).",
+      "Schedule on high-engagement windows: Tuesday–Thursday mornings (8–10 AM) are best; avoid",
+      "weekends. Spread ideas across different days.",
+      opts.audience ? `Audience: ${opts.audience}.` : "",
+      voicePrompt(opts.voice),
+      `\nReturn ONLY a JSON array of exactly ${n} objects, each: {"day","time","hook","idea"}.`,
+      "No markdown, no prose, no code fences — just the JSON array.",
+    ].join(" "),
+    messages: [{ role: "user", content: `Themes/topics to cover this week:\n${opts.themes}` }],
+  });
+
+  const raw = textOf(msg);
+  const jsonText = raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1);
+  try {
+    const arr = JSON.parse(jsonText);
+    if (Array.isArray(arr)) {
+      return arr
+        .filter((x) => x && typeof x === "object")
+        .map((x) => ({
+          day: String(x.day ?? ""),
+          time: String(x.time ?? ""),
+          hook: String(x.hook ?? ""),
+          idea: String(x.idea ?? ""),
+        }));
+    }
+  } catch {
+    /* fall through */
+  }
+  throw new Error("Could not parse the generated plan. Please try again.");
+}
+
 function textOf(msg: Anthropic.Message): string {
   return msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

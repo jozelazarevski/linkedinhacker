@@ -359,6 +359,21 @@ button:disabled {
   text-align: left;
 }
 
+.bookmarklet {
+  display: inline-block;
+  background: var(--brand);
+  color: white;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: grab;
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+}
+
+.bookmarklet:hover {
+  background: var(--brand-hover);
+}
+
 .cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

@@ -23,7 +23,9 @@ your account restricted or banned.
 | 🗣 **Your voice** | Train the app on your own posts so every draft/rewrite/comment sounds like **you** — plus a one-click **Humanize** that strips AI tells |
 | 🤖 **AI assistance** | Generate value-first post drafts and rewrites with the Anthropic API |
 | 💬 **Like & comment** | An **engagement queue**: the AI drafts thoughtful comment replies; you review, edit, and post them yourself (no ToS-violating auto-spam) |
-| 🎯 **Engagement cockpit** | Save posts & people to engage with, **batch-draft** voice-matched comments and connection notes, and work a **daily sprint** checklist — you make the final click on LinkedIn |
+| 🎯 **Engagement cockpit** | Save posts & people to engage with, **batch-draft** voice-matched comments and connection notes, **tag & prioritize** targets, and work a **daily sprint** checklist — you make the final click on LinkedIn |
+| 🔖 **Quick capture** | A bookmarklet that drops the LinkedIn post you're reading straight into your engagement queue in one click |
+| 🗓 **Weekly planner** | Generate a week of voice-matched post ideas with suggested days/times, saved as drafts |
 
 ## Tech stack
 
@@ -117,6 +119,24 @@ then on:
   (no "delve", "leverage", "it's not X, it's Y", em-dash overuse, robotic lists)
   and sound like a real person — specifically, like you.
 - **Comment drafts** in the Engage tab also use your voice.
+
+## Quick capture (bookmarklet)
+
+Open **Cockpit → 🔖 Quick capture** and drag the button to your bookmarks bar.
+While browsing LinkedIn, **select a post's text** and click the bookmarklet — it
+opens a small popup that adds the post (text + URL) to your engagement queue,
+then you draft a voice-matched reply in the Cockpit. You always post the comment
+yourself on LinkedIn.
+
+## A note on automation (what this app will and won't do)
+
+This app **assists** engagement; it does not **automate** it. There is no
+auto-liking, auto-commenting, or auto–connection-requesting — not via the API,
+a headless browser, or RPA screen-clicking. That kind of automation violates
+LinkedIn's User Agreement, spams other people, and gets accounts banned. Instead
+the app removes the hard part (deciding what to say, in your voice) and leaves
+the final human click to you. That's also what actually works: LinkedIn's reach
+algorithm rewards authentic engagement and suppresses automated activity.
 
 ## Deploying online
 

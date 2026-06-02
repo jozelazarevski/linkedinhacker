@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
     name: body.name ?? null,
     context: body.context ?? null,
     note: body.note ?? null,
+    tags: typeof body.tags === "string" ? body.tags.trim() || null : null,
+    priority: Number.isFinite(Number(body.priority)) ? Number(body.priority) : 0,
   });
   return NextResponse.json({ target }, { status: 201 });
 }

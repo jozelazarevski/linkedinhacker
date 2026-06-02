@@ -155,7 +155,9 @@ export default function Home() {
           <Compose aiEnabled={me.aiEnabled} tokenExpired={me.account.tokenExpired} onChange={bump} />
         )}
         {tab === "posts" && <Posts refreshKey={refreshKey} onChange={bump} />}
-        {tab === "calendar" && <Calendar refreshKey={refreshKey} />}
+        {tab === "calendar" && (
+          <Calendar refreshKey={refreshKey} aiEnabled={me.aiEnabled} onChange={bump} />
+        )}
         {tab === "engage" && <Engage aiEnabled={me.aiEnabled} />}
         {tab === "cockpit" && <Cockpit aiEnabled={me.aiEnabled} />}
         {tab === "analytics" && <Analytics refreshKey={refreshKey} />}

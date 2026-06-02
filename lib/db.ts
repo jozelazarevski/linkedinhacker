@@ -90,6 +90,8 @@ function migrate(db: Database.Database) {
       context         TEXT,                            -- post text, or headline/about
       draft           TEXT,                            -- AI comment (post) or connect note (person)
       note            TEXT,                            -- your own notes
+      tags            TEXT,                            -- comma-separated labels (niche/campaign)
+      priority        INTEGER NOT NULL DEFAULT 0,      -- higher = sort first
       status          TEXT NOT NULL DEFAULT 'todo',    -- todo | drafted | done | skipped
       created_at      INTEGER NOT NULL,
       updated_at      INTEGER NOT NULL
@@ -112,6 +114,22 @@ function migrate(db: Database.Database) {
       created_at      INTEGER NOT NULL
     );
   `);
+
+  // Backfill columns on databases created before these fields existed.
+  addColumnIfMissing(db, "targets", "tags", "TEXT");
+  addColumnIfMissing(db, "targets", "priority", "INTEGER NOT NULL DEFAULT 0");
+}
+
+function addColumnIfMissing(
+  db: Database.Database,
+  table: string,
+  column: string,
+  decl: string
+) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
 }
 
 // ── Account helpers ───────────────────────────────────────────────────────────
@@ -334,6 +352,8 @@ export interface Target {
   context: string | null;
   draft: string | null;
   note: string | null;
+  tags: string | null;
+  priority: number;
   status: string; // todo | drafted | done | skipped
   created_at: number;
   updated_at: number;
@@ -346,13 +366,15 @@ export function createTarget(input: {
   name?: string | null;
   context?: string | null;
   note?: string | null;
+  tags?: string | null;
+  priority?: number;
 }): Target {
   const db = getDb();
   const now = Date.now();
   const info = db
     .prepare(
-      `INSERT INTO targets (account_id, kind, url, name, context, note, status, created_at, updated_at)
-       VALUES (@account_id, @kind, @url, @name, @context, @note, 'todo', @now, @now)`
+      `INSERT INTO targets (account_id, kind, url, name, context, note, tags, priority, status, created_at, updated_at)
+       VALUES (@account_id, @kind, @url, @name, @context, @note, @tags, @priority, 'todo', @now, @now)`
     )
     .run({
       account_id: input.account_id,
@@ -361,6 +383,8 @@ export function createTarget(input: {
       name: input.name ?? null,
       context: input.context ?? null,
       note: input.note ?? null,
+      tags: input.tags ?? null,
+      priority: input.priority ?? 0,
       now,
     });
   return getTarget(Number(info.lastInsertRowid))!;
@@ -371,14 +395,21 @@ export function getTarget(id: number): Target | undefined {
 }
 
 export function listTargets(accountId: number): Target[] {
+  // Highest priority first, then most recent. Open work sorts above done/skipped.
   return getDb()
-    .prepare("SELECT * FROM targets WHERE account_id = ? ORDER BY created_at DESC")
+    .prepare(
+      `SELECT * FROM targets WHERE account_id = ?
+       ORDER BY
+         CASE status WHEN 'todo' THEN 0 WHEN 'drafted' THEN 1 ELSE 2 END ASC,
+         priority DESC,
+         created_at DESC`
+    )
     .all(accountId) as Target[];
 }
 
 export function updateTarget(
   id: number,
-  fields: Partial<Pick<Target, "url" | "name" | "context" | "draft" | "note" | "status">>
+  fields: Partial<Pick<Target, "url" | "name" | "context" | "draft" | "note" | "tags" | "priority" | "status">>
 ): Target | undefined {
   const keys = Object.keys(fields);
   if (keys.length === 0) return getTarget(id);
