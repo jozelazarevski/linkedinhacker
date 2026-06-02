@@ -151,10 +151,12 @@ queued posts when they're due. How you host them depends on the platform.
    `LINKEDIN_REDIRECT_URI` to your real Vercel URL, e.g.
    `https://your-app.vercel.app` and `https://your-app.vercel.app/api/auth/callback`
    — and add that callback URL to your LinkedIn app's authorized redirect URLs.
-3. Set `CRON_SECRET` to a random string. `vercel.json` already registers an
-   hourly **Cron Job** that hits `/api/cron/publish` to publish due posts (no
-   separate worker process needed). *Note: Vercel's Hobby plan runs crons at most
-   once per day; the Pro plan allows the hourly schedule defined here.*
+3. Set `CRON_SECRET` to a random string. `vercel.json` already registers a
+   daily **Cron Job** that hits `/api/cron/publish` to publish due posts (no
+   separate worker process needed). *The daily schedule (`0 9 * * *`) is
+   compatible with Vercel's free Hobby plan, which limits crons to once per day.
+   On the Pro plan you can change it to a more frequent schedule (e.g. hourly,
+   `0 * * * *`) so scheduled posts go out closer to their target time.*
 
    ⚠️ **Storage caveat:** Vercel's filesystem is ephemeral, so the bundled SQLite
    database in `/tmp` **does not persist** across deploys/cold starts. For real
