@@ -81,6 +81,22 @@ function migrate(db: Database.Database) {
       updated_at      INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS targets (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id      INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+      kind            TEXT NOT NULL,                   -- 'post' | 'person'
+      url             TEXT,                            -- link to the post/profile
+      name            TEXT,                            -- author or person name
+      context         TEXT,                            -- post text, or headline/about
+      draft           TEXT,                            -- AI comment (post) or connect note (person)
+      note            TEXT,                            -- your own notes
+      status          TEXT NOT NULL DEFAULT 'todo',    -- todo | drafted | done | skipped
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_targets_status ON targets(account_id, status);
+
     CREATE TABLE IF NOT EXISTS voice_profiles (
       account_id      INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
       samples         TEXT,        -- the user's own example posts (few-shot source)
@@ -305,6 +321,88 @@ export function updateEngagement(
     .prepare(`UPDATE engagements SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
     .run({ ...fields, id, updated_at: Date.now() });
   return getEngagement(id);
+}
+
+// ── Engagement target helpers ─────────────────────────────────────────────────
+
+export interface Target {
+  id: number;
+  account_id: number;
+  kind: string; // 'post' | 'person'
+  url: string | null;
+  name: string | null;
+  context: string | null;
+  draft: string | null;
+  note: string | null;
+  status: string; // todo | drafted | done | skipped
+  created_at: number;
+  updated_at: number;
+}
+
+export function createTarget(input: {
+  account_id: number;
+  kind: "post" | "person";
+  url?: string | null;
+  name?: string | null;
+  context?: string | null;
+  note?: string | null;
+}): Target {
+  const db = getDb();
+  const now = Date.now();
+  const info = db
+    .prepare(
+      `INSERT INTO targets (account_id, kind, url, name, context, note, status, created_at, updated_at)
+       VALUES (@account_id, @kind, @url, @name, @context, @note, 'todo', @now, @now)`
+    )
+    .run({
+      account_id: input.account_id,
+      kind: input.kind,
+      url: input.url ?? null,
+      name: input.name ?? null,
+      context: input.context ?? null,
+      note: input.note ?? null,
+      now,
+    });
+  return getTarget(Number(info.lastInsertRowid))!;
+}
+
+export function getTarget(id: number): Target | undefined {
+  return getDb().prepare("SELECT * FROM targets WHERE id = ?").get(id) as Target | undefined;
+}
+
+export function listTargets(accountId: number): Target[] {
+  return getDb()
+    .prepare("SELECT * FROM targets WHERE account_id = ? ORDER BY created_at DESC")
+    .all(accountId) as Target[];
+}
+
+export function updateTarget(
+  id: number,
+  fields: Partial<Pick<Target, "url" | "name" | "context" | "draft" | "note" | "status">>
+): Target | undefined {
+  const keys = Object.keys(fields);
+  if (keys.length === 0) return getTarget(id);
+  const setClause = keys.map((k) => `${k} = @${k}`).join(", ");
+  getDb()
+    .prepare(`UPDATE targets SET ${setClause}, updated_at = @updated_at WHERE id = @id`)
+    .run({ ...fields, id, updated_at: Date.now() });
+  return getTarget(id);
+}
+
+export function deleteTarget(id: number, accountId: number): void {
+  getDb().prepare("DELETE FROM targets WHERE id = ? AND account_id = ?").run(id, accountId);
+}
+
+/** Count targets marked done since local midnight (for the daily sprint goal). */
+export function countEngagedToday(accountId: number): number {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const row = getDb()
+    .prepare(
+      "SELECT COUNT(*) AS n FROM targets WHERE account_id = ? AND status = 'done' AND updated_at >= ?"
+    )
+    .get(accountId, start.getTime()) as { n: number };
+  return row.n;
 }
 
 // ── Voice profile helpers ─────────────────────────────────────────────────────

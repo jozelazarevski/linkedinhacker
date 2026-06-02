@@ -172,6 +172,41 @@ export async function analyzeVoice(samples: string): Promise<string> {
   return textOf(msg);
 }
 
+/**
+ * Draft a short, personalized connection-request note. The user reviews and
+ * sends it themselves on LinkedIn — we never auto-send connection requests.
+ */
+export async function draftConnectionNote(opts: {
+  personContext: string; // name, headline, about, or why they're relevant
+  why?: string; // why the user wants to connect
+  voice?: Voice;
+}): Promise<string> {
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 300,
+    system: [
+      "You write short, warm, personalized LinkedIn connection-request notes.",
+      "Constraints: under 280 characters (LinkedIn's limit), specific to this person (reference",
+      "something real about them), no flattery clichés, no pitch or selling, no 'I'd love to add you",
+      "to my network'. Sound like a real person reaching out for a genuine reason. Return only the note.",
+      "\n" + voicePrompt(opts.voice),
+    ].join(" "),
+    messages: [
+      {
+        role: "user",
+        content: [
+          opts.why ? `Why I want to connect: ${opts.why}` : "",
+          "About them:",
+          opts.personContext,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      },
+    ],
+  });
+  return textOf(msg);
+}
+
 function textOf(msg: Anthropic.Message): string {
   return msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

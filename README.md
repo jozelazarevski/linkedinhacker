@@ -23,6 +23,7 @@ your account restricted or banned.
 | 🗣 **Your voice** | Train the app on your own posts so every draft/rewrite/comment sounds like **you** — plus a one-click **Humanize** that strips AI tells |
 | 🤖 **AI assistance** | Generate value-first post drafts and rewrites with the Anthropic API |
 | 💬 **Like & comment** | An **engagement queue**: the AI drafts thoughtful comment replies; you review, edit, and post them yourself (no ToS-violating auto-spam) |
+| 🎯 **Engagement cockpit** | Save posts & people to engage with, **batch-draft** voice-matched comments and connection notes, and work a **daily sprint** checklist — you make the final click on LinkedIn |
 
 ## Tech stack
 
