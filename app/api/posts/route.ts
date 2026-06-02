@@ -6,15 +6,15 @@ export const dynamic = "force-dynamic";
 
 // List all posts for the signed-in account.
 export async function GET() {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
-  return NextResponse.json({ posts: listPosts(auth.account.id) });
+  return NextResponse.json({ posts: await listPosts(auth.account.id) });
 }
 
 // Create a draft, schedule, or publish-immediately post.
 //   body: { commentary, visibility?, scheduledAt? (epoch ms), status? }
 export async function POST(req: NextRequest) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   let body: any;
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     status = "scheduled";
   }
 
-  const post = createPost({
+  const post = await createPost({
     account_id: auth.account.id,
     commentary,
     visibility,

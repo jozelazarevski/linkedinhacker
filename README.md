@@ -30,7 +30,7 @@ your account restricted or banned.
 ## Tech stack
 
 - **Next.js 14** (App Router) + **TypeScript** — full-stack web app
-- **SQLite** (`better-sqlite3`) — local persistence, zero external DB
+- **libSQL / Turso** — durable serverless DB in production; embedded SQLite file locally
 - **Anthropic SDK** — optional AI drafting
 - A small **background worker** that publishes scheduled posts when they're due
 
@@ -158,11 +158,22 @@ queued posts when they're due. How you host them depends on the platform.
    On the Pro plan you can change it to a more frequent schedule (e.g. hourly,
    `0 * * * *`) so scheduled posts go out closer to their target time.*
 
-   ⚠️ **Storage caveat:** Vercel's filesystem is ephemeral, so the bundled SQLite
-   database in `/tmp` **does not persist** across deploys/cold starts. For real
-   use on Vercel, point `DATABASE_PATH` at a durable store — the easiest is a
-   free [Turso](https://turso.tech) (libSQL, SQLite-compatible) database, or
-   Vercel Postgres. (`lib/db.ts` is the single integration point to swap.)
+   🗄️ **Database (required on Vercel):** Vercel's filesystem is ephemeral and
+   each serverless invocation may run on a different instance, so a local SQLite
+   file would lose your session/data between requests. The app uses
+   [Turso](https://turso.tech) (libSQL) for durable, shared storage. Create a
+   free database:
+
+   ```bash
+   # install the Turso CLI, then:
+   turso db create linkedin-growth
+   turso db show linkedin-growth --url      # -> TURSO_DATABASE_URL
+   turso db tokens create linkedin-growth   # -> TURSO_AUTH_TOKEN
+   ```
+
+   Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` to your Vercel env vars. The
+   schema is created automatically on first use. (Locally, if these are unset,
+   the app falls back to an embedded SQLite file under `./data` — zero setup.)
 
 ### Option B — Railway / Render / Fly.io / a VPS (recommended, runs as-is)
 

@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // better-sqlite3 is a native module; keep it external to the server bundle.
+  // Keep the libSQL client external to the server bundle.
   experimental: {
-    serverComponentsExternalPackages: ["better-sqlite3"],
+    serverComponentsExternalPackages: ["@libsql/client", "libsql"],
   },
 };
 

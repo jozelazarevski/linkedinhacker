@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     const token = await exchangeCodeForToken(code);
     const info = await fetchUserInfo(token.access_token);
 
-    const account = upsertAccount({
+    const account = await upsertAccount({
       member_sub: info.sub,
       author_urn: `urn:li:person:${info.sub}`,
       name: info.name ?? ([info.given_name, info.family_name].filter(Boolean).join(" ") || null),
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     });
 
     setSession(account.id);
-    logEvent(account.id, "signed_in");
+    await logEvent(account.id, "signed_in");
     return NextResponse.redirect(`${base}/`);
   } catch (err: any) {
     return NextResponse.redirect(

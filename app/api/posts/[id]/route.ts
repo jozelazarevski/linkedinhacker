@@ -4,19 +4,19 @@ import { getPost, updatePost, deletePost } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-function ownPost(id: number, accountId: number) {
-  const post = getPost(id);
+async function ownPost(id: number, accountId: number) {
+  const post = await getPost(id);
   if (!post || post.account_id !== accountId) return null;
   return post;
 }
 
 // Update a draft/scheduled post (edit text, reschedule, change visibility).
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   const id = Number(params.id);
-  const post = ownPost(id, auth.account.id);
+  const post = await ownPost(id, auth.account.id);
   if (!post) return jsonError("Post not found", 404);
   if (post.status === "published") return jsonError("Published posts cannot be edited", 409);
 
@@ -48,19 +48,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  const updated = updatePost(id, fields as any);
+  const updated = await updatePost(id, fields as any);
   return NextResponse.json({ post: updated });
 }
 
 // Delete a draft/scheduled post.
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   const id = Number(params.id);
-  const post = ownPost(id, auth.account.id);
+  const post = await ownPost(id, auth.account.id);
   if (!post) return jsonError("Post not found", 404);
 
-  deletePost(id, auth.account.id);
+  await deletePost(id, auth.account.id);
   return NextResponse.json({ ok: true });
 }

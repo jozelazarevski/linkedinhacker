@@ -5,7 +5,7 @@ import { analyticsSummary } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
-  return NextResponse.json(analyticsSummary(auth.account.id));
+  return NextResponse.json(await analyticsSummary(auth.account.id));
 }

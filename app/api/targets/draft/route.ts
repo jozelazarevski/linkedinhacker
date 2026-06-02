@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 //   body: { id?: number }   -> draft just that target
 //   body: {}                -> draft every 'todo' target with context (max 15)
 export async function POST(req: NextRequest) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
   if (!aiEnabled()) return jsonError("AI drafting is disabled. Set ANTHROPIC_API_KEY.", 503);
 
@@ -21,18 +21,18 @@ export async function POST(req: NextRequest) {
     /* empty body = batch all */
   }
 
-  const vp = getVoiceProfile(auth.account.id);
+  const vp = await getVoiceProfile(auth.account.id);
   const voice: Voice | undefined = vp
     ? { samples: vp.samples, styleGuide: vp.style_guide }
     : undefined;
 
   let queue: Target[];
   if (body.id) {
-    const t = getTarget(Number(body.id));
+    const t = await getTarget(Number(body.id));
     if (!t || t.account_id !== auth.account.id) return jsonError("Not found", 404);
     queue = [t];
   } else {
-    queue = listTargets(auth.account.id)
+    queue = (await listTargets(auth.account.id))
       .filter((t) => t.status === "todo" && (t.context || "").trim())
       .slice(0, 15);
   }
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         t.kind === "person"
           ? await draftConnectionNote({ personContext: t.context!, why: t.note ?? undefined, voice })
           : await draftComment({ postText: t.context!, intent: t.note ?? undefined, voice });
-      updateTarget(t.id, { draft, status: "drafted" });
+      await updateTarget(t.id, { draft, status: "drafted" });
       drafted++;
     } catch (e: any) {
       errors.push(`#${t.id}: ${String(e?.message ?? e)}`);

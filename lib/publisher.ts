@@ -7,17 +7,17 @@ import { publishTextPost } from "./linkedin";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function publishPostNow(postId: number): Promise<Post> {
-  const post = getPost(postId);
+  const post = await getPost(postId);
   if (!post) throw new Error(`Post ${postId} not found`);
 
-  const account = getAccountById(post.account_id);
+  const account = await getAccountById(post.account_id);
   if (!account) throw new Error(`Account for post ${postId} not found`);
 
   if (account.expires_at <= Date.now()) {
-    const updated = updatePost(postId, {
+    const updated = (await updatePost(postId, {
       status: "failed",
       error: "Access token expired — please sign in to LinkedIn again.",
-    })!;
+    }))!;
     throw new Error(updated.error!);
   }
 
@@ -29,20 +29,20 @@ export async function publishPostNow(postId: number): Promise<Post> {
       visibility: post.visibility === "CONNECTIONS" ? "CONNECTIONS" : "PUBLIC",
     });
 
-    const updated = updatePost(postId, {
+    const updated = (await updatePost(postId, {
       status: "published",
       published_at: Date.now(),
       linkedin_urn: result.urn || null,
       error: null,
-    })!;
-    logEvent(account.id, "post_published", { postId, urn: result.urn });
+    }))!;
+    await logEvent(account.id, "post_published", { postId, urn: result.urn });
     return updated;
   } catch (err: any) {
-    const updated = updatePost(postId, {
+    const updated = (await updatePost(postId, {
       status: "failed",
       error: String(err?.message ?? err),
-    })!;
-    logEvent(account.id, "post_publish_failed", { postId, error: updated.error });
+    }))!;
+    await logEvent(account.id, "post_publish_failed", { postId, error: updated.error });
     throw err;
   }
 }
@@ -53,7 +53,7 @@ export async function runDuePosts(now = Date.now()): Promise<{
   published: number;
   failed: number;
 }> {
-  const due = listDuePosts(now);
+  const due = await listDuePosts(now);
   let published = 0;
   let failed = 0;
 

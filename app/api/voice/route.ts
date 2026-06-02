@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 // Get the signed-in user's voice profile.
 export async function GET() {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
-  const profile = getVoiceProfile(auth.account.id);
+  const profile = await getVoiceProfile(auth.account.id);
   return NextResponse.json({
     profile: profile
       ? { samples: profile.samples, styleGuide: profile.style_guide, updatedAt: profile.updated_at }
@@ -20,7 +20,7 @@ export async function GET() {
 // Save writing samples; (re)analyze them into a style guide when AI is enabled.
 //   body: { samples: string }
 export async function POST(req: NextRequest) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   let body: any;
@@ -43,12 +43,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const profile = saveVoiceProfile({
+  const profile = await saveVoiceProfile({
     account_id: auth.account.id,
     samples,
     style_guide: styleGuide,
   });
-  logEvent(auth.account.id, "voice_saved");
+  await logEvent(auth.account.id, "voice_saved");
 
   return NextResponse.json({
     profile: { samples: profile.samples, styleGuide: profile.style_guide, updatedAt: profile.updated_at },

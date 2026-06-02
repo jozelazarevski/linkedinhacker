@@ -7,11 +7,11 @@ export const dynamic = "force-dynamic";
 
 // Publish a post immediately via the official LinkedIn Posts API.
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   const id = Number(params.id);
-  const post = getPost(id);
+  const post = await getPost(id);
   if (!post || post.account_id !== auth.account.id) return jsonError("Post not found", 404);
   if (post.status === "published") return jsonError("Post is already published", 409);
 

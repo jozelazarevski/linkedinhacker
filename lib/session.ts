@@ -34,7 +34,7 @@ export function clearSession(): void {
   cookies().delete(COOKIE_NAME);
 }
 
-export function getSessionAccount(): Account | null {
+export async function getSessionAccount(): Promise<Account | null> {
   const raw = cookies().get(COOKIE_NAME)?.value;
   if (!raw) return null;
   const [value, mac] = raw.split(".");
@@ -49,7 +49,7 @@ export function getSessionAccount(): Account | null {
   }
   const id = Number(value);
   if (!Number.isInteger(id)) return null;
-  return getAccountById(id) ?? null;
+  return (await getAccountById(id)) ?? null;
 }
 
 /** OAuth state token (CSRF protection) stored in a short-lived cookie. */

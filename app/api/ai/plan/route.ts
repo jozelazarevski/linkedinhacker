@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Generate a week of voice-matched post ideas with suggested days/times.
 //   body: { themes, count?, audience? }  -> { plan: PlanIdea[] }
 export async function POST(req: NextRequest) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
   if (!aiEnabled()) return jsonError("AI drafting is disabled. Set ANTHROPIC_API_KEY.", 503);
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const themes = String(body.themes ?? "").trim();
   if (!themes) return jsonError("Describe the themes/topics you want to cover.");
 
-  const vp = getVoiceProfile(auth.account.id);
+  const vp = await getVoiceProfile(auth.account.id);
   const voice: Voice | undefined = vp ? { samples: vp.samples, styleGuide: vp.style_guide } : undefined;
 
   try {

@@ -4,18 +4,18 @@ import { getTarget, updateTarget, deleteTarget } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-function own(id: number, accountId: number) {
-  const t = getTarget(id);
+async function own(id: number, accountId: number) {
+  const t = await getTarget(id);
   return t && t.account_id === accountId ? t : null;
 }
 
 // Edit a target: update draft text, notes, or status (todo|drafted|done|skipped).
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   const id = Number(params.id);
-  if (!own(id, auth.account.id)) return jsonError("Not found", 404);
+  if (!(await own(id, auth.account.id))) return jsonError("Not found", 404);
 
   let body: any;
   try {
@@ -32,17 +32,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (Number.isFinite(Number(body.priority))) fields.priority = Number(body.priority);
   if (["todo", "drafted", "done", "skipped"].includes(body.status)) fields.status = body.status;
 
-  const target = updateTarget(id, fields as any);
+  const target = await updateTarget(id, fields as any);
   return NextResponse.json({ target });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = requireAccount();
+  const auth = await requireAccount();
   if ("error" in auth) return auth.error;
 
   const id = Number(params.id);
-  if (!own(id, auth.account.id)) return jsonError("Not found", 404);
+  if (!(await own(id, auth.account.id))) return jsonError("Not found", 404);
 
-  deleteTarget(id, auth.account.id);
+  await deleteTarget(id, auth.account.id);
   return NextResponse.json({ ok: true });
 }

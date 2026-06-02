@@ -1,6 +1,13 @@
-// Initialize the SQLite database (creates the file + tables if missing).
+// Initialize the database (creates tables if missing).
 //   npm run db:init
-import { getDb } from "../lib/db";
+import { initDb } from "../lib/db";
 
-getDb();
-console.log("Database initialized at ./data/studio.db");
+initDb()
+  .then(() => {
+    console.log("Database initialized.");
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("DB init failed:", err);
+    process.exit(1);
+  });

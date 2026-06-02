@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 // Returns the current session + capability flags for the UI.
 export async function GET() {
-  const account = getSessionAccount();
+  const account = await getSessionAccount();
   return NextResponse.json({
     configured: isConfigured(),
     aiEnabled: aiEnabled(),
