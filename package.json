@@ -1,0 +1,29 @@
+{
+  "name": "linkedin-growth-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A legitimate LinkedIn growth studio built on LinkedIn's official OAuth API: schedule & publish your own posts, AI-assisted drafting, analytics, and a human-in-the-loop engagement queue.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "worker": "tsx scripts/worker.ts",
+    "db:init": "tsx scripts/init-db.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "better-sqlite3": "^11.3.0",
+    "next": "14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.5.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.5.4"
+  }
+}
