@@ -71,6 +71,46 @@ humanizer profiles
 humanizer rewrite "..." -v        # -v prints token + cache usage
 ```
 
+### Augmentation level
+
+`rewrite`, `humanize`, and `write` take `-l/--level` to control how aggressively
+the text is transformed:
+
+| Level | What it does |
+|---|---|
+| `light` | Minimal touch — fix only clear AI tells and tonal mismatches; keep structure & wording |
+| `medium` *(default)* | Natural rewrite in your voice; keep structure and key points |
+| `heavy` | Full rewrite — restructure freely for authenticity, preserving meaning |
+
+All levels **preserve sophistication** — humanizing never means dumbing down; the
+output matches your own level of nuance and technical precision.
+
+```bash
+humanizer humanize ./draft.txt --level heavy
+humanizer rewrite "..." --level light
+```
+
+### See what changed (`--diff`)
+
+`rewrite` and `humanize` accept `-d/--diff` to print a word-level before/after
+and a list of the specific AI tells that were removed (and em-dashes, length):
+
+```bash
+humanizer humanize "In today's fast-paced world we leverage cutting-edge tools…" --diff
+```
+```
+── changes ──
+[-In today's fast-paced world we leverage cutting-edge-]{+we use plain+} tools…
+AI tells removed:
+  • "in today's fast-paced world"
+  • "leverage" (verb)
+  • "cutting-edge"
+length: 12 → 6 words (-6)
+```
+The rewritten text goes to **stdout** (pipe-friendly); the diff goes to **stderr**,
+so `humanizer humanize x --diff > out.txt` still writes a clean result. Use
+`--no-color` for plain `[-removed-]`/`{+added+}` markers instead of ANSI color.
+
 ### Multiple voices
 
 Everything takes `--profile <name>`, so you can keep separate voices (e.g. your

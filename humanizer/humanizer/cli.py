@@ -13,8 +13,9 @@ import argparse
 import sys
 from typing import Optional
 
-from . import engine
+from . import diff, engine
 from .config import MODEL, has_api_key
+from .engine import AUGMENTATION_LEVELS, DEFAULT_LEVEL
 from .ingest import from_path, from_text
 from .store import Store
 
@@ -104,15 +105,22 @@ def _run_voice_op(args, op_name: str) -> int:
         store.close()
         return 1
 
+    level = getattr(args, "level", DEFAULT_LEVEL)
     if op_name == "rewrite":
-        msg = engine.rewrite(style_guide, samples, text, instruction=args.instruction)
+        msg = engine.rewrite(style_guide, samples, text, instruction=args.instruction, level=level)
     elif op_name == "humanize":
-        msg = engine.humanize(style_guide, samples, text)
+        msg = engine.humanize(style_guide, samples, text, level=level)
     else:  # write
-        msg = engine.generate(style_guide, samples, text)
+        msg = engine.generate(style_guide, samples, text, level=level)
 
     store.close()
-    print(engine.result_text(msg))
+    result = engine.result_text(msg)
+    print(result)  # clean result on stdout (pipe-friendly)
+
+    # Diff view goes to stderr so piping the result stays clean.
+    if getattr(args, "diff", False) and op_name in ("rewrite", "humanize"):
+        color = None if not getattr(args, "no_color", False) else False
+        print("\n" + diff.report(text, result, color=color), file=sys.stderr)
     if args.verbose:
         print(f"\n[{engine.cache_stats(msg)}]", file=sys.stderr)
     return 0
@@ -184,19 +192,34 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("analyze", help="distill a style guide from your samples")
     a.set_defaults(func=cmd_analyze)
 
+    levels = list(AUGMENTATION_LEVELS.keys())
+
+    def _add_level(sp):
+        sp.add_argument(
+            "-l", "--level", choices=levels, default=DEFAULT_LEVEL,
+            help=f"augmentation strength: light=minimal touch, heavy=full rewrite (default: {DEFAULT_LEVEL})",
+        )
+
     r = sub.add_parser("rewrite", help="rewrite text in your voice")
     r.add_argument("text", nargs="?", help="text or '-' for stdin")
     r.add_argument("-i", "--instruction", help="extra instruction (e.g. 'make it shorter')")
+    _add_level(r)
+    r.add_argument("-d", "--diff", action="store_true", help="show before/after changes + AI tells removed")
+    r.add_argument("--no-color", action="store_true", help="plain-text diff (no ANSI color)")
     r.add_argument("-v", "--verbose", action="store_true", help="print token/cache usage")
     r.set_defaults(func=cmd_rewrite)
 
     h = sub.add_parser("humanize", help="strip AI tells and match your voice")
     h.add_argument("text", nargs="?", help="text or '-' for stdin")
+    _add_level(h)
+    h.add_argument("-d", "--diff", action="store_true", help="show before/after changes + AI tells removed")
+    h.add_argument("--no-color", action="store_true", help="plain-text diff (no ANSI color)")
     h.add_argument("-v", "--verbose", action="store_true", help="print token/cache usage")
     h.set_defaults(func=cmd_humanize, instruction=None)
 
     w = sub.add_parser("write", help="generate new text in your voice from a brief")
     w.add_argument("text", nargs="?", help="brief, or '-' for stdin")
+    _add_level(w)
     w.add_argument("-v", "--verbose", action="store_true", help="print token/cache usage")
     w.set_defaults(func=cmd_write, instruction=None)
 

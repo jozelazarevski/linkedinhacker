@@ -5,7 +5,8 @@ import tempfile
 from humanizer.ingest import from_text
 from humanizer.retrieval import TfidfIndex, most_relevant
 from humanizer.store import Store
-from humanizer.engine import build_voice_corpus, voice_system
+from humanizer.engine import build_voice_corpus, voice_system, AUGMENTATION_LEVELS, _level_directive
+from humanizer import diff
 
 
 def test_from_text_split():
@@ -53,9 +54,37 @@ def test_voice_system_has_cache_breakpoint():
     assert "sample sentence" in blocks[-1]["text"]
 
 
+def test_word_diff_marks_changes():
+    out = diff.word_diff("we are thrilled to unlock value", "we built a thing", color=False)
+    assert "[-" in out and "{+" in out  # has deletions and insertions in plain mode
+
+
+def test_removed_tells_detects_and_clears():
+    before = "In today's fast-paced world we leverage cutting-edge tools to delve into data."
+    after = "We use good tools to dig into the data."
+    removed = dict(diff.removed_tells(before, after))
+    assert '"delve"' in removed
+    assert '"leverage" (verb)' in removed
+    assert '"cutting-edge"' in removed
+    # A report renders without error and mentions the removals.
+    report = diff.report(before, after, color=False)
+    assert "AI tells removed" in report and "delve" in report
+
+
+def test_levels_distinct():
+    assert set(AUGMENTATION_LEVELS) == {"light", "medium", "heavy"}
+    assert "LIGHT" in _level_directive("light")
+    assert "HEAVY" in _level_directive("heavy")
+    # Unknown level falls back to the default (medium).
+    assert _level_directive("bogus") == AUGMENTATION_LEVELS["medium"]
+
+
 if __name__ == "__main__":
     test_from_text_split()
     test_retrieval_ranks_relevant_first()
     test_store_roundtrip()
     test_voice_system_has_cache_breakpoint()
+    test_word_diff_marks_changes()
+    test_removed_tells_detects_and_clears()
+    test_levels_distinct()
     print("All offline tests passed.")

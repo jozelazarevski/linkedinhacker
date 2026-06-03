@@ -26,6 +26,36 @@ AI_TELLS = (
     "a specific human, not a content engine."
 )
 
+# Preserve the author's intelligence — humanizing must not mean simplifying.
+SOPHISTICATION = (
+    "Preserve the sophistication, nuance, and conceptual depth of the original. Do NOT flatten, "
+    "dumb down, or strip technical precision — match the author's own level of sophistication. "
+    "Sounding human and being sophisticated are not in tension."
+)
+
+# How aggressively to transform the text. The directive goes in the *user turn*
+# (after the cached prefix), so changing level never invalidates the prompt cache.
+AUGMENTATION_LEVELS = {
+    "light": (
+        "Augmentation level: LIGHT. Make the lightest possible touch — fix only clear AI tells "
+        "and obvious tonal mismatches. Keep the original structure, length, and most wording."
+    ),
+    "medium": (
+        "Augmentation level: MEDIUM. Rewrite naturally in my voice — adjust phrasing, rhythm, and "
+        "word choice as needed, but keep the original structure and all key points."
+    ),
+    "heavy": (
+        "Augmentation level: HEAVY. Rewrite freely and fully in my voice — restructure sentences "
+        "and flow for authenticity, while preserving all meaning, facts, and intent. You may add "
+        "natural connective phrasing and vary cadence substantially."
+    ),
+}
+DEFAULT_LEVEL = "medium"
+
+
+def _level_directive(level: str) -> str:
+    return AUGMENTATION_LEVELS.get(level, AUGMENTATION_LEVELS[DEFAULT_LEVEL])
+
 # Keep the cached corpus a fixed size so the prefix stays byte-stable across calls
 # and comfortably exceeds the ~4096-token minimum cacheable prefix for Opus.
 _CORPUS_CHAR_BUDGET = 14000
@@ -73,7 +103,7 @@ def voice_system(style_guide: Optional[str], corpus: str, task_instruction: str)
         "You write in one specific person's voice. Match their style exactly: sentence "
         "length and rhythm, vocabulary, level of formality, punctuation and capitalization "
         "habits, and how (or whether) they use emoji and hashtags. A reader who knows them "
-        "should believe they wrote it. " + AI_TELLS + " " + task_instruction
+        "should believe they wrote it. " + AI_TELLS + " " + SOPHISTICATION + " " + task_instruction
     )
     voice_parts = []
     if style_guide:
@@ -125,12 +155,16 @@ def analyze_style(samples: Sequence[str]) -> str:
     return _text_of(msg)
 
 
+# Heavier augmentation gets a bit more thinking headroom.
+_EFFORT_BY_LEVEL = {"light": "low", "medium": "low", "heavy": "medium"}
+
+
 def rewrite(
     style_guide: Optional[str],
     samples: Sequence[str],
     text: str,
     instruction: Optional[str] = None,
-    effort: str = "low",
+    level: str = DEFAULT_LEVEL,
 ):
     """Rewrite ``text`` so it reads as if the user wrote it."""
     corpus = build_voice_corpus(samples)
@@ -141,40 +175,40 @@ def rewrite(
         "rewritten text — no preamble, no explanation.",
     )
     ref = _relevant_block(samples, text)
-    extra = f"\nAlso: {instruction}\n" if instruction else ""
-    user = f"{ref}Rewrite this in my voice:{extra}\n\n{text}"
+    extra = f"\nAlso: {instruction}" if instruction else ""
+    user = f"{ref}{_level_directive(level)}{extra}\n\nRewrite this in my voice:\n\n{text}"
     return _client().messages.create(
         model=MODEL,
         max_tokens=4096,
         thinking={"type": "adaptive"},
-        output_config={"effort": effort},
+        output_config={"effort": _EFFORT_BY_LEVEL.get(level, "low")},
         system=system,
         messages=[{"role": "user", "content": user}],
     )
 
 
-def humanize(style_guide: Optional[str], samples: Sequence[str], text: str, effort: str = "low"):
+def humanize(style_guide: Optional[str], samples: Sequence[str], text: str, level: str = DEFAULT_LEVEL):
     """Strip AI tells from ``text`` and make it sound like the user."""
     corpus = build_voice_corpus(samples)
     system = voice_system(
         style_guide,
         corpus,
         "Rewrite the user's text so it reads as genuinely human-written — never AI-generated — and "
-        "in their voice. Preserve meaning, facts, and length. Return ONLY the rewritten text.",
+        "in their voice. Preserve meaning, facts, and intent. Return ONLY the rewritten text.",
     )
     ref = _relevant_block(samples, text)
-    user = f"{ref}Rewrite this to sound fully human and in my voice:\n\n{text}"
+    user = f"{ref}{_level_directive(level)}\n\nRewrite this to sound fully human and in my voice:\n\n{text}"
     return _client().messages.create(
         model=MODEL,
         max_tokens=4096,
         thinking={"type": "adaptive"},
-        output_config={"effort": effort},
+        output_config={"effort": _EFFORT_BY_LEVEL.get(level, "low")},
         system=system,
         messages=[{"role": "user", "content": user}],
     )
 
 
-def generate(style_guide: Optional[str], samples: Sequence[str], brief: str, effort: str = "low"):
+def generate(style_guide: Optional[str], samples: Sequence[str], brief: str, level: str = DEFAULT_LEVEL):
     """Write something new from a brief, in the user's voice."""
     corpus = build_voice_corpus(samples)
     system = voice_system(
@@ -183,12 +217,12 @@ def generate(style_guide: Optional[str], samples: Sequence[str], brief: str, eff
         "Write new text from the user's brief, in their voice. Return ONLY the finished text.",
     )
     ref = _relevant_block(samples, brief)
-    user = f"{ref}Write this in my voice:\n\n{brief}"
+    user = f"{ref}{_level_directive(level)}\n\nWrite this in my voice:\n\n{brief}"
     return _client().messages.create(
         model=MODEL,
         max_tokens=4096,
         thinking={"type": "adaptive"},
-        output_config={"effort": effort},
+        output_config={"effort": _EFFORT_BY_LEVEL.get(level, "low")},
         system=system,
         messages=[{"role": "user", "content": user}],
     )
