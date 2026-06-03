@@ -1,0 +1,6 @@
+# Core dependency: the official Anthropic Python SDK.
+# 0.69+ supports adaptive thinking, the effort parameter, and output_config.
+anthropic>=0.69.0
+
+# Optional: auto-load a .env file for ANTHROPIC_API_KEY.
+python-dotenv>=1.0.0
