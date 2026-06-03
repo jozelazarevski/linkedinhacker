@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
 
   try {
     if (typeof body.humanize === "string") {
-      const draft = await humanizeText(body.humanize, voice);
+      const level = ["light", "medium", "heavy"].includes(body.level) ? body.level : "medium";
+      const draft = await humanizeText(body.humanize, voice, level);
       return NextResponse.json({ draft });
     }
 

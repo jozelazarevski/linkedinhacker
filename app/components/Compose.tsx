@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { api, localInputToMs } from "../lib-client";
+import { wordDiff, removedTells, wordCount } from "../lib-diff";
 import Voice from "./Voice";
 
 const MAX = 3000;
+type AugLevel = "light" | "medium" | "heavy";
 
 interface Template {
   id: string;
@@ -13,6 +15,13 @@ interface Template {
   description: string;
   scaffold: string;
   aiBrief: string;
+}
+
+interface NextPostIdea {
+  hook: string;
+  angle: string;
+  rationale: string;
+  format: string;
 }
 
 export default function Compose({
@@ -36,6 +45,14 @@ export default function Compose({
   const [audience, setAudience] = useState("");
   const [drafts, setDrafts] = useState<string[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
+
+  // Humanize controls + review (before/after diff)
+  const [level, setLevel] = useState<AugLevel>("medium");
+  const [review, setReview] = useState<{ before: string; after: string } | null>(null);
+
+  // Next-post suggestion engine
+  const [suggestions, setSuggestions] = useState<NextPostIdea[]>([]);
+  const [suggestBusy, setSuggestBusy] = useState(false);
 
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -93,16 +110,39 @@ export default function Compose({
     setAiBusy(true);
     setMsg(null);
     try {
+      const before = text;
       const { draft } = await api<{ draft: string }>("/api/ai/draft", {
         method: "POST",
-        body: JSON.stringify({ humanize: text }),
+        body: JSON.stringify({ humanize: before, level }),
       });
-      setText(draft);
-      setMsg({ kind: "info", text: "Rewritten to sound human and on-voice." });
+      // Show a before/after review instead of silently replacing.
+      setReview({ before, after: draft });
     } catch (e: any) {
       setMsg({ kind: "error", text: e.message });
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  function acceptReview() {
+    if (review) setText(review.after);
+    setReview(null);
+    setMsg({ kind: "info", text: "Applied the humanized version." });
+  }
+
+  async function suggest() {
+    setSuggestBusy(true);
+    setMsg(null);
+    try {
+      const { ideas } = await api<{ ideas: NextPostIdea[] }>("/api/ai/suggest", {
+        method: "POST",
+        body: JSON.stringify({ count: 5 }),
+      });
+      setSuggestions(ideas);
+    } catch (e: any) {
+      setMsg({ kind: "error", text: e.message });
+    } finally {
+      setSuggestBusy(false);
     }
   }
 
@@ -153,6 +193,48 @@ export default function Compose({
       )}
 
       <Voice aiEnabled={aiEnabled} />
+
+      {aiEnabled && (
+        <div className="card">
+          <h2>💡 What to post next</h2>
+          <p className="sub">
+            Suggestions based on your voice and recent posts. Click one to start composing.
+          </p>
+          <div className="btn-row" style={{ marginTop: 0 }}>
+            <button onClick={suggest} disabled={suggestBusy}>
+              {suggestBusy ? <span className="spin" /> : "Suggest next posts"}
+            </button>
+          </div>
+          {suggestions.map((s, i) => (
+            <div className="list-item" key={i}>
+              <div className="meta">
+                <span className="pill scheduled">{s.format || "idea"}</span>
+              </div>
+              <div className="body" style={{ fontWeight: 600 }}>{s.hook}</div>
+              {s.angle && (
+                <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{s.angle}</div>
+              )}
+              {s.rationale && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 6, fontStyle: "italic" }}>
+                  Why: {s.rationale}
+                </div>
+              )}
+              <div className="btn-row">
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setText(`${s.hook}\n\n${s.angle}`.trim());
+                    setSuggestions([]);
+                    setMsg({ kind: "info", text: "Loaded the idea below — refine, humanize, then publish." });
+                  }}
+                >
+                  Use this idea
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {templates.length > 0 && (
         <div className="card">
@@ -294,11 +376,32 @@ export default function Compose({
             <button className="ghost" disabled={aiBusy} onClick={() => improve("Add a clear call to discussion at the end without being spammy")}>
               💬 Add CTA
             </button>
-            <button className="ghost" disabled={aiBusy} onClick={humanize} title="Rewrite to remove AI tells and match your trained voice">
-              🧑 Humanize / match my voice
-            </button>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <button className="ghost" disabled={aiBusy} onClick={humanize} title="Rewrite to remove AI tells and match your trained voice">
+                🧑 Humanize / match my voice
+              </button>
+              <select
+                value={level}
+                onChange={(e) => setLevel(e.target.value as AugLevel)}
+                title="How aggressively to rewrite"
+                style={{ width: "auto", padding: "6px 8px", fontSize: 12 }}
+              >
+                <option value="light">light</option>
+                <option value="medium">medium</option>
+                <option value="heavy">heavy</option>
+              </select>
+            </span>
             {aiBusy && <span className="spin" />}
           </div>
+        )}
+
+        {review && (
+          <HumanizeReview
+            before={review.before}
+            after={review.after}
+            onAccept={acceptReview}
+            onDiscard={() => setReview(null)}
+          />
         )}
 
         <div className="row" style={{ marginTop: 12 }}>
@@ -330,5 +433,66 @@ export default function Compose({
         </div>
       </div>
     </>
+  );
+}
+
+function HumanizeReview({
+  before,
+  after,
+  onAccept,
+  onDiscard,
+}: {
+  before: string;
+  after: string;
+  onAccept: () => void;
+  onDiscard: () => void;
+}) {
+  const segs = wordDiff(before, after);
+  const tells = removedTells(before, after);
+  const wb = wordCount(before);
+  const wa = wordCount(after);
+
+  return (
+    <div className="list-item" style={{ marginTop: 14 }}>
+      <div className="meta">
+        <span className="pill approved">humanized — review</span>
+        <span>
+          {wb} → {wa} words ({wa - wb >= 0 ? "+" : ""}
+          {wa - wb})
+        </span>
+      </div>
+
+      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Changes</div>
+      <div className="body diff">
+        {segs.map((s, i) =>
+          s.type === "equal" ? (
+            <span key={i}>{s.text}</span>
+          ) : (
+            <span key={i} className={s.type === "del" ? "diff-del" : "diff-ins"}>
+              {s.text}
+            </span>
+          )
+        )}
+      </div>
+
+      {tells.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>AI tells removed</div>
+          <div className="template-grid">
+            {tells.map((t) => (
+              <span key={t.label} className="pill dismissed">
+                {t.label}
+                {t.n > 1 ? ` ×${t.n}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="btn-row">
+        <button onClick={onAccept}>Use this version</button>
+        <button className="ghost" onClick={onDiscard}>Discard</button>
+      </div>
+    </div>
   );
 }

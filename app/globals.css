@@ -359,6 +359,24 @@ button:disabled {
   text-align: left;
 }
 
+.diff {
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.diff-del {
+  background: rgba(226, 97, 106, 0.18);
+  color: var(--red);
+  text-decoration: line-through;
+  border-radius: 3px;
+}
+
+.diff-ins {
+  background: rgba(47, 170, 106, 0.2);
+  color: var(--green);
+  border-radius: 3px;
+}
+
 .bookmarklet {
   display: inline-block;
   background: var(--brand);

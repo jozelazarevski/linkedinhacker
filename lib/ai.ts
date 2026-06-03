@@ -11,15 +11,27 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 
+// Accept the standard ANTHROPIC_API_KEY, but also a couple of common aliases so
+// an existing Vercel var named CLAUDE_API / Claude_API just works.
+function apiKey(): string | undefined {
+  return (
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.CLAUDE_API ||
+    process.env.Claude_API ||
+    process.env.ANTHROPIC_AUTH_TOKEN
+  );
+}
+
 export function aiEnabled(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(apiKey());
 }
 
 function client(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("AI drafting is disabled. Set ANTHROPIC_API_KEY in .env.local to enable it.");
+  const key = apiKey();
+  if (!key) {
+    throw new Error("AI drafting is disabled. Set ANTHROPIC_API_KEY to enable it.");
   }
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return new Anthropic({ apiKey: key });
 }
 
 export interface Voice {
@@ -42,6 +54,26 @@ const AI_TELLS =
   "'game-changer', 'unlock', 'leverage' (as a verb), 'testament to', 'it's not just X, it's Y' constructions, " +
   "robotic three-part lists with identical rhythm, overuse of em-dashes, hollow motivational sign-offs, " +
   "and emoji sprinkled at the start of every line. Write like a specific human, not a content engine.";
+
+// Humanizing must never mean simplifying.
+const SOPHISTICATION =
+  "Preserve the sophistication, nuance, and conceptual depth of the original — do not flatten, dumb " +
+  "down, or strip technical precision. Match the author's own level of sophistication.";
+
+export type AugLevel = "light" | "medium" | "heavy";
+
+// How aggressively to transform the text. Kept out of the cached voice prefix.
+export const AUGMENTATION_LEVELS: Record<AugLevel, string> = {
+  light:
+    "Augmentation level: LIGHT. Make the lightest possible touch — fix only clear AI tells and " +
+    "obvious tonal mismatches; keep the original structure, length, and most wording.",
+  medium:
+    "Augmentation level: MEDIUM. Rewrite naturally in my voice — adjust phrasing, rhythm, and word " +
+    "choice as needed, but keep the original structure and all key points.",
+  heavy:
+    "Augmentation level: HEAVY. Rewrite freely and fully in my voice — restructure sentences and " +
+    "flow for authenticity, while preserving all meaning, facts, and intent.",
+};
 
 /** Builds the system addendum that makes the model write in the user's voice. */
 function voicePrompt(voice?: Voice): string {
@@ -135,19 +167,25 @@ export async function improvePost(
  * voice profile is provided, it matches that specific voice; otherwise it just
  * strips the robotic AI tells and makes it sound like a real person.
  */
-export async function humanizeText(text: string, voice?: Voice): Promise<string> {
+export async function humanizeText(
+  text: string,
+  voice?: Voice,
+  level: AugLevel = "medium"
+): Promise<string> {
   const msg = await client().messages.create({
     model: MODEL,
     max_tokens: 1500,
     system: [
       "You rewrite text so it reads as genuinely human-written, never AI-generated.",
-      "Preserve the meaning, facts, and intent. Keep roughly the same length.",
+      "Preserve the meaning, facts, and intent.",
       "Strip every trace of generic AI prose and make it sound like a real person talking.",
       AI_TELLS,
+      SOPHISTICATION,
       "\n" + voicePrompt(voice),
       "\nReturn only the rewritten text.",
     ].join(" "),
-    messages: [{ role: "user", content: text }],
+    // Level goes in the user turn so it can vary without disturbing the system prompt.
+    messages: [{ role: "user", content: `${AUGMENTATION_LEVELS[level]}\n\n${text}` }],
   });
   return textOf(msg);
 }
@@ -260,6 +298,71 @@ export async function generateWeeklyPlan(opts: {
     /* fall through */
   }
   throw new Error("Could not parse the generated plan. Please try again.");
+}
+
+export interface NextPostIdea {
+  hook: string; // the opening line
+  angle: string; // what the post is about (1-2 sentences)
+  rationale: string; // why this is a good next post for the user
+  format: string; // e.g. "story", "contrarian take", "how-to"
+}
+
+/**
+ * Suggest the user's NEXT posts to write, informed by their voice and their
+ * recent posts (so it builds on themes, avoids repetition, and varies format).
+ */
+export async function suggestNextPosts(opts: {
+  voice?: Voice;
+  recentPosts?: string[];
+  audience?: string;
+  count?: number;
+}): Promise<NextPostIdea[]> {
+  const n = Math.min(Math.max(opts.count ?? 5, 1), 8);
+  const recent = (opts.recentPosts ?? []).slice(0, 10);
+  const recentBlock = recent.length
+    ? "My recent posts (don't repeat these topics — build on themes that fit, and vary the format):\n" +
+      '"""\n' +
+      recent.map((p, i) => `${i + 1}. ${p.slice(0, 400)}`).join("\n---\n") +
+      '\n"""'
+    : "I don't have posts on record yet — suggest strong starter posts to establish my presence.";
+
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 1600,
+    system: [
+      "You are a LinkedIn content strategist. Suggest the user's NEXT posts to write — specific,",
+      "immediately actionable ideas that grow an authentic audience, not vague themes.",
+      "Mix formats across the set (story, lesson, contrarian take, how-to, question, behind-the-scenes).",
+      "Avoid engagement-bait and clichés.",
+      opts.audience ? `Audience: ${opts.audience}.` : "",
+      voicePrompt(opts.voice),
+      `\nReturn ONLY a JSON array of exactly ${n} objects, each: {"hook","angle","rationale","format"}. ` +
+        '"hook" = the opening line, "angle" = what it covers in 1-2 sentences, "rationale" = why this ' +
+        'is a good next post for me, "format" = the post type. No markdown, no code fences.',
+    ]
+      .filter(Boolean)
+      .join(" "),
+    messages: [{ role: "user", content: recentBlock }],
+  });
+
+  const raw = textOf(msg);
+  const jsonText = raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1);
+  try {
+    const arr = JSON.parse(jsonText);
+    if (Array.isArray(arr)) {
+      return arr
+        .filter((x) => x && typeof x === "object")
+        .map((x) => ({
+          hook: String(x.hook ?? ""),
+          angle: String(x.angle ?? ""),
+          rationale: String(x.rationale ?? ""),
+          format: String(x.format ?? ""),
+        }));
+    }
+  } catch {
+    /* fall through */
+  }
+  throw new Error("Could not parse suggestions. Please try again.");
 }
 
 function textOf(msg: Anthropic.Message): string {
