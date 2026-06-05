@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, fmtDate } from "../lib-client";
 import HumanizeReview from "./HumanizeReview";
+import TellHint from "./TellHint";
 
 type AugLevel = "light" | "medium" | "heavy";
 
@@ -187,6 +188,7 @@ export default function Engage({ aiEnabled }: { aiEnabled: boolean }) {
                 if (e.target.value !== it.draft_comment) update(it.id, { draftComment: e.target.value });
               }}
             />
+            {aiEnabled && <TellHint text={it.draft_comment} />}
             <div className="btn-row">
               <button
                 className="secondary"

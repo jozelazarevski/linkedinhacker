@@ -487,6 +487,14 @@ export async function logEvent(accountId: number | null, event: string, meta?: u
   ]);
 }
 
+export async function countEvent(accountId: number, event: string): Promise<number> {
+  const row = await one<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM analytics_log WHERE account_id = ? AND event = ?",
+    [accountId, event]
+  );
+  return row?.n ?? 0;
+}
+
 export async function analyticsSummary(accountId: number) {
   const posts = await listPosts(accountId);
   const published = posts.filter((p) => p.status === "published");
@@ -501,6 +509,7 @@ export async function analyticsSummary(accountId: number) {
   }
 
   const engagements = await listEngagements(accountId);
+  const humanizePasses = await countEvent(accountId, "humanized");
 
   return {
     totals: {
@@ -509,6 +518,7 @@ export async function analyticsSummary(accountId: number) {
       drafts: drafts.length,
       commentsApproved: engagements.filter((e) => e.status === "approved" || e.status === "used").length,
       commentsPending: engagements.filter((e) => e.status === "pending").length,
+      humanizePasses,
     },
     cadenceByWeek: Object.entries(byWeek)
       .sort(([a], [b]) => (a < b ? -1 : 1))

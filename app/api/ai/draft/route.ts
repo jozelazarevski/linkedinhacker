@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAccount, jsonError } from "@/lib/api-helpers";
 import { aiEnabled, draftPosts, improvePost, humanizeText, type Voice } from "@/lib/ai";
-import { getVoiceProfile } from "@/lib/db";
+import { getVoiceProfile, logEvent } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     if (typeof body.humanize === "string") {
       const level = ["light", "medium", "heavy"].includes(body.level) ? body.level : "medium";
       const draft = await humanizeText(body.humanize, voice, level);
+      await logEvent(auth.account.id, "humanized", { level });
       return NextResponse.json({ draft });
     }
 

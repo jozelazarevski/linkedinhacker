@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, fmtDate } from "../lib-client";
 import HumanizeReview from "./HumanizeReview";
+import TellHint from "./TellHint";
 
 type AugLevel = "light" | "medium" | "heavy";
 
@@ -327,6 +328,7 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
             ) : (
               <p className="muted" style={{ fontSize: 13 }}>No draft yet.</p>
             )}
+            {aiEnabled && <TellHint text={t.draft} />}
 
             <div className="btn-row">
               {aiEnabled && (

@@ -10,6 +10,7 @@ interface Summary {
     drafts: number;
     commentsApproved: number;
     commentsPending: number;
+    humanizePasses: number;
   };
   cadenceByWeek: { week: string; count: number }[];
   lastPublishedAt: number | null;
@@ -55,6 +56,10 @@ export default function Analytics({ refreshKey }: { refreshKey: number }) {
           <div className="stat">
             <div className="n">{data.totals.commentsApproved}</div>
             <div className="l">Comments used</div>
+          </div>
+          <div className="stat">
+            <div className="n">{data.totals.humanizePasses}</div>
+            <div className="l">Humanize passes</div>
           </div>
         </div>
         {data.lastPublishedAt && (
