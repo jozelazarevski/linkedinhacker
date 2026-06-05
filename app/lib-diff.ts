@@ -94,6 +94,16 @@ export function removedTells(before: string, after: string): { label: string; n:
   return out;
 }
 
+/** AI tells currently present in a piece of text (for the publish safety check). */
+export function detectTells(text: string): { label: string; n: number }[] {
+  const out: { label: string; n: number }[] = [];
+  for (const [label, re] of TELL_PATTERNS) {
+    const n = count(re, text);
+    if (n > 0) out.push({ label, n });
+  }
+  return out;
+}
+
 export function wordCount(s: string): number {
   return (s.match(/\w+/g) ?? []).length;
 }
