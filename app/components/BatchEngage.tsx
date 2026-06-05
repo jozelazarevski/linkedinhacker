@@ -10,9 +10,11 @@ interface BatchTarget {
   url: string;
   draft: string | null;
   note: string | null;
+  context: string | null;   // post text captured from feed (if available)
   // local UI state
   draftStatus: "pending" | "drafting" | "drafted" | "error";
   draftError?: string;
+  hadPostText?: boolean;    // true when draft was based on real post content
   approvalStatus: "pending" | "approved" | "skipped" | "queued";
   editedDraft: string;
 }
@@ -79,6 +81,7 @@ export default function BatchEngage({ aiEnabled }: { aiEnabled: boolean }) {
         url: t.url,
         draft: t.draft,
         note: t.note,
+        context: t.context ?? null,
         draftStatus: t.draft ? "drafted" : "pending",
         approvalStatus: "pending",
         editedDraft: t.draft || "",
@@ -114,11 +117,17 @@ export default function BatchEngage({ aiEnabled }: { aiEnabled: boolean }) {
       setDraftIdx(i + 1);
       updateTarget(t.id, { draftStatus: "drafting" });
       try {
-        const res = await api<{ target: any }>(`/api/targets/${t.id}/batch-draft`, {
-          method: "POST",
-        });
+        const res = await api<{ target: any; hadPostText: boolean }>(
+          `/api/targets/${t.id}/batch-draft`,
+          { method: "POST" }
+        );
         const draft = res.target?.draft || "";
-        updateTarget(t.id, { draftStatus: "drafted", draft, editedDraft: draft });
+        updateTarget(t.id, {
+          draftStatus: "drafted",
+          draft,
+          editedDraft: draft,
+          hadPostText: res.hadPostText,
+        });
       } catch (e: any) {
         updateTarget(t.id, {
           draftStatus: "error",
@@ -203,8 +212,10 @@ export default function BatchEngage({ aiEnabled }: { aiEnabled: boolean }) {
           <div className="card">
             <h2>Import LinkedIn Posts</h2>
             <p className="sub">
-              Paste up to 100 LinkedIn post URLs (one per line). Use the{" "}
-              <strong>Cockpit</strong> bookmarklet to collect posts as you browse LinkedIn.
+              Paste up to 100 LinkedIn post URLs — one per line. For the best AI comments,
+              use <strong>collect mode</strong> first:{" "}
+              <code>npm run browser-agent -- --collect 50</code> — it scrolls your feed,
+              captures each post's text, and sends it here automatically.
             </p>
 
             <label>Post URLs (one per line)</label>
@@ -509,17 +520,17 @@ function ReviewCard({
   onEdit: (draft: string) => void;
   onUnskip: () => void;
 }) {
-  const isApproved = target.approvalStatus === "approved";
-  const isSkipped = target.approvalStatus === "skipped";
-  const isQueued = target.approvalStatus === "queued";
+  const [showPost, setShowPost] = useState(false);
 
-  const borderColor = isApproved
-    ? "var(--green)"
-    : isSkipped
-    ? "var(--border)"
-    : isQueued
-    ? "var(--brand)"
+  const isApproved = target.approvalStatus === "approved";
+  const isSkipped  = target.approvalStatus === "skipped";
+  const isQueued   = target.approvalStatus === "queued";
+
+  const borderColor = isApproved ? "var(--green)"
+    : isQueued ? "var(--brand)"
     : "var(--border)";
+
+  const hasPostText = Boolean(target.context?.trim());
 
   return (
     <div
@@ -528,34 +539,73 @@ function ReviewCard({
         border: `1px solid ${borderColor}`,
         borderRadius: 10,
         padding: 16,
-        opacity: isSkipped ? 0.55 : 1,
+        opacity: isSkipped ? 0.5 : 1,
       }}
     >
-      {/* URL + status */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 10,
-          flexWrap: "wrap",
-        }}
-      >
+      {/* URL row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         <a
           href={target.url}
           target="_blank"
           rel="noreferrer"
           style={{ fontSize: 13, flex: 1, minWidth: 0, wordBreak: "break-all" }}
         >
-          {shortUrl(target.url, 90)}
+          {shortUrl(target.url, 80)}
         </a>
+        {/* Content quality badge */}
+        {target.draftStatus === "drafted" && (
+          <span
+            title={hasPostText ? "Comment drafted from actual post content" : "Comment drafted from URL only — edit to make it post-specific"}
+            style={{
+              fontSize: 11,
+              padding: "2px 7px",
+              borderRadius: 999,
+              background: hasPostText ? "rgba(47,170,106,0.18)" : "rgba(217,164,65,0.18)",
+              color: hasPostText ? "var(--green)" : "var(--amber)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {hasPostText ? "✓ post-aware" : "⚠ url-only"}
+          </span>
+        )}
         {isApproved && <span className="pill approved">approved</span>}
-        {isSkipped && <span className="pill dismissed">skipped</span>}
-        {isQueued && <span className="pill published">queued ✓</span>}
-        {!isApproved && !isSkipped && !isQueued && (
-          <span className="pill pending">pending</span>
+        {isSkipped  && <span className="pill dismissed">skipped</span>}
+        {isQueued   && <span className="pill published">queued ✓</span>}
+        {!isApproved && !isSkipped && !isQueued && target.draftStatus === "drafted" && (
+          <span className="pill pending">pending review</span>
         )}
       </div>
+
+      {/* Post text snippet (collapsible) */}
+      {hasPostText && !isSkipped && (
+        <div style={{ marginBottom: 8 }}>
+          <button
+            className="ghost"
+            style={{ fontSize: 11, padding: "2px 8px", marginBottom: showPost ? 6 : 0 }}
+            onClick={() => setShowPost((v) => !v)}
+          >
+            {showPost ? "Hide post ▲" : "Show post ▼"}
+          </button>
+          {showPost && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--muted)",
+                background: "var(--panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "8px 10px",
+                whiteSpace: "pre-wrap",
+                maxHeight: 140,
+                overflowY: "auto",
+              }}
+            >
+              {target.context!.slice(0, 600)}
+              {target.context!.length > 600 ? "…" : ""}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Draft textarea */}
       {!isSkipped && (
@@ -565,11 +615,15 @@ function ReviewCard({
           rows={3}
           disabled={isQueued}
           style={{ fontSize: 13, marginBottom: 8 }}
-          placeholder="No draft — AI drafting may still be running."
+          placeholder={
+            target.draftStatus === "pending"
+              ? "Not drafted yet — run Draft step first."
+              : "No comment generated."
+          }
         />
       )}
 
-      {/* Actions */}
+      {/* Action buttons */}
       {!isQueued && (
         <div className="btn-row">
           {!isApproved && !isSkipped && (
@@ -587,14 +641,10 @@ function ReviewCard({
             </>
           )}
           {isApproved && (
-            <button className="ghost" onClick={onSkip}>
-              Un-approve
-            </button>
+            <button className="ghost" onClick={onSkip}>Un-approve</button>
           )}
           {isSkipped && (
-            <button className="ghost" onClick={onUnskip}>
-              Restore
-            </button>
+            <button className="ghost" onClick={onUnskip}>Restore</button>
           )}
         </div>
       )}
