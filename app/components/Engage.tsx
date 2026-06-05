@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { api, fmtDate } from "../lib-client";
+import HumanizeReview from "./HumanizeReview";
+
+type AugLevel = "light" | "medium" | "heavy";
 
 interface Engagement {
   id: number;
@@ -19,6 +22,11 @@ export default function Engage({ aiEnabled }: { aiEnabled: boolean }) {
   const [intent, setIntent] = useState("add a genuinely useful perspective");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Humanize controls
+  const [level, setLevel] = useState<AugLevel>("medium");
+  const [hzBusy, setHzBusy] = useState<number | null>(null);
+  const [review, setReview] = useState<{ id: number; before: string; after: string } | null>(null);
 
   async function load() {
     try {
@@ -59,6 +67,28 @@ export default function Engage({ aiEnabled }: { aiEnabled: boolean }) {
     } catch (e: any) {
       setErr(e.message);
     }
+  }
+
+  async function humanizeItem(id: number, draftComment: string) {
+    setHzBusy(id);
+    setErr(null);
+    try {
+      const { draft } = await api<{ draft: string }>("/api/ai/draft", {
+        method: "POST",
+        body: JSON.stringify({ humanize: draftComment, level }),
+      });
+      setReview({ id, before: draftComment, after: draft });
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setHzBusy(null);
+    }
+  }
+
+  async function acceptHumanize() {
+    if (!review) return;
+    await update(review.id, { draftComment: review.after });
+    setReview(null);
   }
 
   return (
@@ -117,7 +147,19 @@ export default function Engage({ aiEnabled }: { aiEnabled: boolean }) {
       )}
 
       <div className="card">
-        <h2>📋 Approval queue</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <h2 style={{ margin: 0 }}>📋 Approval queue</h2>
+          {aiEnabled && (
+            <label style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              humanize level
+              <select value={level} onChange={(e) => setLevel(e.target.value as AugLevel)} style={{ width: "auto", padding: "4px 8px" }}>
+                <option value="light">light</option>
+                <option value="medium">medium</option>
+                <option value="heavy">heavy</option>
+              </select>
+            </label>
+          )}
+        </div>
         <p className="sub">Edit, then mark approved/used when you&apos;ve posted it.</p>
         {items.length === 0 && <p className="muted">Nothing queued yet.</p>}
         {items.map((it) => (
@@ -138,6 +180,7 @@ export default function Engage({ aiEnabled }: { aiEnabled: boolean }) {
               </div>
             )}
             <textarea
+              key={it.draft_comment}
               rows={3}
               defaultValue={it.draft_comment}
               onBlur={(e) => {
@@ -151,11 +194,24 @@ export default function Engage({ aiEnabled }: { aiEnabled: boolean }) {
               >
                 Copy
               </button>
+              {aiEnabled && (
+                <button className="secondary" onClick={() => humanizeItem(it.id, it.draft_comment)} disabled={hzBusy === it.id}>
+                  {hzBusy === it.id ? <span className="spin" /> : "🧑 Humanize"}
+                </button>
+              )}
               <button onClick={() => update(it.id, { status: "used" })}>Mark used</button>
               <button className="ghost" onClick={() => update(it.id, { status: "dismissed" })}>
                 Dismiss
               </button>
             </div>
+            {review && review.id === it.id && (
+              <HumanizeReview
+                before={review.before}
+                after={review.after}
+                onAccept={acceptHumanize}
+                onDiscard={() => setReview(null)}
+              />
+            )}
           </div>
         ))}
       </div>

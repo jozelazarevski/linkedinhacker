@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { api, fmtDate } from "../lib-client";
+import HumanizeReview from "./HumanizeReview";
+
+type AugLevel = "light" | "medium" | "heavy";
 
 interface Target {
   id: number;
@@ -38,6 +41,11 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
   // Filtering
   const [tagFilter, setTagFilter] = useState("");
   const [origin, setOrigin] = useState("");
+
+  // Humanize
+  const [hzLevel, setHzLevel] = useState<AugLevel>("medium");
+  const [hzBusy, setHzBusy] = useState<number | null>(null);
+  const [review, setReview] = useState<{ id: number; before: string; after: string } | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -125,6 +133,28 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
     } catch (e: any) {
       setErr(e.message);
     }
+  }
+
+  async function humanizeItem(id: number, draft: string) {
+    setHzBusy(id);
+    setErr(null);
+    try {
+      const { draft: out } = await api<{ draft: string }>("/api/ai/draft", {
+        method: "POST",
+        body: JSON.stringify({ humanize: draft, level: hzLevel }),
+      });
+      setReview({ id, before: draft, after: out });
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setHzBusy(null);
+    }
+  }
+
+  async function acceptHumanize() {
+    if (!review) return;
+    await patch(review.id, { draft: review.after });
+    setReview(null);
   }
 
   async function remove(id: number) {
@@ -236,14 +266,26 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <h2 style={{ margin: 0 }}>📋 Queue</h2>
-          {allTags.length > 0 && (
-            <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ width: "auto", minWidth: 160 }}>
-              <option value="">All tags</option>
-              {allTags.map((tg) => (
-                <option key={tg} value={tg}>{tg}</option>
-              ))}
-            </select>
-          )}
+          <div style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            {aiEnabled && (
+              <label style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                humanize
+                <select value={hzLevel} onChange={(e) => setHzLevel(e.target.value as AugLevel)} style={{ width: "auto", padding: "4px 8px" }}>
+                  <option value="light">light</option>
+                  <option value="medium">medium</option>
+                  <option value="heavy">heavy</option>
+                </select>
+              </label>
+            )}
+            {allTags.length > 0 && (
+              <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
+                <option value="">All tags</option>
+                {allTags.map((tg) => (
+                  <option key={tg} value={tg}>{tg}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
         <p className="sub">⭐ a target to push it to the top of your sprint.</p>
         {visible.length === 0 && <p className="muted">Nothing here yet. Add a target above.</p>}
@@ -277,6 +319,7 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
 
             {t.draft ? (
               <textarea
+                key={t.draft}
                 rows={t.kind === "person" ? 3 : 3}
                 defaultValue={t.draft}
                 onBlur={(e) => { if (e.target.value !== t.draft) patch(t.id, { draft: e.target.value }); }}
@@ -296,10 +339,23 @@ export default function Cockpit({ aiEnabled }: { aiEnabled: boolean }) {
                   Copy
                 </button>
               )}
+              {aiEnabled && t.draft && (
+                <button className="secondary" onClick={() => humanizeItem(t.id, t.draft!)} disabled={hzBusy === t.id}>
+                  {hzBusy === t.id ? <span className="spin" /> : "🧑 Humanize"}
+                </button>
+              )}
               {t.status !== "done" && <button onClick={() => patch(t.id, { status: "done" })}>✅ Done</button>}
               {t.status !== "skipped" && <button className="ghost" onClick={() => patch(t.id, { status: "skipped" })}>Skip</button>}
               <button className="danger" onClick={() => remove(t.id)}>Delete</button>
             </div>
+            {review && review.id === t.id && (
+              <HumanizeReview
+                before={review.before}
+                after={review.after}
+                onAccept={acceptHumanize}
+                onDiscard={() => setReview(null)}
+              />
+            )}
           </div>
         ))}
       </div>

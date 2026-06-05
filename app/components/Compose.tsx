@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api, localInputToMs } from "../lib-client";
-import { wordDiff, removedTells, wordCount } from "../lib-diff";
+import { detectTells } from "../lib-diff";
+import HumanizeReview from "./HumanizeReview";
 import Voice from "./Voice";
 
 const MAX = 3000;
@@ -49,6 +50,9 @@ export default function Compose({
   // Humanize controls + review (before/after diff)
   const [level, setLevel] = useState<AugLevel>("medium");
   const [review, setReview] = useState<{ before: string; after: string } | null>(null);
+  const [publishWarn, setPublishWarn] = useState<
+    { action: "publish" | "schedule"; tells: { label: string; n: number }[] } | null
+  >(null);
 
   // Next-post suggestion engine
   const [suggestions, setSuggestions] = useState<NextPostIdea[]>([]);
@@ -146,11 +150,21 @@ export default function Compose({
     }
   }
 
-  async function save(action: "draft" | "schedule" | "publish") {
+  async function save(action: "draft" | "schedule" | "publish", override = false) {
     if (!text.trim()) {
       setMsg({ kind: "error", text: "Write something first." });
       return;
     }
+    // Safety check: warn (don't block) if the post still reads AI-written before
+    // it goes out. Drafts are exempt.
+    if (!override && aiEnabled && (action === "publish" || action === "schedule")) {
+      const tells = detectTells(text);
+      if (tells.length > 0) {
+        setPublishWarn({ action, tells });
+        return;
+      }
+    }
+    setPublishWarn(null);
     setBusy(true);
     setMsg(null);
     try {
@@ -420,6 +434,34 @@ export default function Compose({
 
         {msg && <div className={`notice ${msg.kind}`} style={{ marginTop: 14 }}>{msg.text}</div>}
 
+        {publishWarn && (
+          <div className="notice warn" style={{ marginTop: 14 }}>
+            <strong>This still reads a bit AI-written.</strong> Detected:{" "}
+            {publishWarn.tells.map((t) => t.label).join(", ")}.
+            <div className="btn-row">
+              <button
+                onClick={() => {
+                  setPublishWarn(null);
+                  humanize();
+                }}
+                disabled={aiBusy}
+              >
+                🧑 Humanize first
+              </button>
+              <button
+                className="ghost"
+                onClick={() => save(publishWarn.action, true)}
+                disabled={busy}
+              >
+                {publishWarn.action === "publish" ? "Publish anyway" : "Schedule anyway"}
+              </button>
+              <button className="ghost" onClick={() => setPublishWarn(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="btn-row">
           <button onClick={() => save("publish")} disabled={busy}>
             {busy ? <span className="spin" /> : "Publish now"}
@@ -433,66 +475,5 @@ export default function Compose({
         </div>
       </div>
     </>
-  );
-}
-
-function HumanizeReview({
-  before,
-  after,
-  onAccept,
-  onDiscard,
-}: {
-  before: string;
-  after: string;
-  onAccept: () => void;
-  onDiscard: () => void;
-}) {
-  const segs = wordDiff(before, after);
-  const tells = removedTells(before, after);
-  const wb = wordCount(before);
-  const wa = wordCount(after);
-
-  return (
-    <div className="list-item" style={{ marginTop: 14 }}>
-      <div className="meta">
-        <span className="pill approved">humanized — review</span>
-        <span>
-          {wb} → {wa} words ({wa - wb >= 0 ? "+" : ""}
-          {wa - wb})
-        </span>
-      </div>
-
-      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Changes</div>
-      <div className="body diff">
-        {segs.map((s, i) =>
-          s.type === "equal" ? (
-            <span key={i}>{s.text}</span>
-          ) : (
-            <span key={i} className={s.type === "del" ? "diff-del" : "diff-ins"}>
-              {s.text}
-            </span>
-          )
-        )}
-      </div>
-
-      {tells.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>AI tells removed</div>
-          <div className="template-grid">
-            {tells.map((t) => (
-              <span key={t.label} className="pill dismissed">
-                {t.label}
-                {t.n > 1 ? ` ×${t.n}` : ""}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="btn-row">
-        <button onClick={onAccept}>Use this version</button>
-        <button className="ghost" onClick={onDiscard}>Discard</button>
-      </div>
-    </div>
   );
 }
