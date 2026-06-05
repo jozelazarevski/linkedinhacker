@@ -4,16 +4,11 @@
  * Setup:
  *   npm install -D playwright
  *   npx playwright install chromium
+ *   cp .env.example .env.local   # set AGENT_API_KEY to any random string
+ *   export AGENT_API_KEY=same-value LGS_ACCOUNT_ID=1
  *
- *   Add to .env.local:
- *     AGENT_API_KEY=some-random-secret   # must match the value on the server
- *
- *   Then run:
- *     AGENT_API_KEY=some-random-secret LGS_ACCOUNT_ID=1 npm run browser-agent
- *
- * The agent polls the web app for pending browser tasks (likes, comments) and
- * executes them in a real Chromium window so LinkedIn sees normal browser traffic.
- * A persistent profile keeps you logged in between runs.
+ * Run:
+ *   npm run browser-agent
  */
 
 import { chromium } from "playwright";
@@ -28,15 +23,11 @@ const POLL_MS = 5_000;
 
 async function main() {
   if (!AGENT_KEY) {
-    console.error(
-      "AGENT_API_KEY is not set.\n" +
-        "Set it to the same value as AGENT_API_KEY on the server, then rerun:\n" +
-        "  AGENT_API_KEY=<secret> LGS_ACCOUNT_ID=<id> npm run browser-agent"
-    );
+    console.error("Set AGENT_API_KEY in your environment (must match the server).");
     process.exit(1);
   }
 
-  console.log("LinkedIn Browser Agent");
+  console.log(`LinkedIn Browser Agent`);
   console.log(`  App URL   : ${BASE_URL}`);
   console.log(`  Account   : ${ACCOUNT_ID}`);
   console.log(`  Profile   : ${PROFILE_DIR}`);
@@ -58,9 +49,9 @@ async function main() {
     page.url().includes("/uas/");
 
   if (loginNeeded) {
-    console.log("Not logged in to LinkedIn. Sign in in the browser window, then restart.");
+    console.log("Not logged in to LinkedIn. Please sign in in the browser window…");
     await page.waitForURL("**/feed/**", { timeout: 120_000 });
-    console.log("Logged in.\n");
+    console.log("Logged in to LinkedIn.\n");
   } else {
     console.log("Already logged in to LinkedIn.\n");
   }
@@ -80,7 +71,7 @@ async function poll(page: any) {
       headers: { "x-agent-key": AGENT_KEY, "x-account-id": ACCOUNT_ID },
     });
     if (!res.ok) {
-      console.warn(`Poll HTTP ${res.status}`);
+      console.warn(`Poll returned ${res.status}`);
       return;
     }
     const { tasks } = (await res.json()) as { tasks: any[] };
@@ -94,63 +85,62 @@ async function poll(page: any) {
 
 async function executeTask(page: any, task: any) {
   console.log(`Task #${task.id} [${task.type}]: ${task.url}`);
-  await patchTask(task.id, "running");
+  await patch(task.id, "running");
   try {
     if (task.type === "like") await likePost(page, task.url);
     else if (task.type === "comment") await commentPost(page, task.url, task.content);
     else throw new Error(`Unknown task type: ${task.type}`);
-    await patchTask(task.id, "done");
-    console.log("  ✓ done");
+    await patch(task.id, "done");
+    console.log(`  ✓ done`);
   } catch (e: any) {
-    console.error("  ✗ failed:", e.message);
-    await patchTask(task.id, "failed", e.message);
+    console.error(`  ✗ failed:`, e.message);
+    await patch(task.id, "failed", e.message);
   }
 }
 
 async function likePost(page: any, url: string) {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000);
-
-  // Try several selectors — LinkedIn's DOM updates periodically
+  // Try multiple selectors — LinkedIn's DOM changes frequently
   const selectors = [
     'button[aria-label*="Like"][data-urn]',
     'button.react-button__trigger',
     'button[aria-label^="Like"]',
-    '[data-control-name="react"]',
   ];
+  let clicked = false;
   for (const sel of selectors) {
     const btn = page.locator(sel).first();
-    if ((await btn.count()) > 0) {
+    if (await btn.count() > 0) {
       await btn.click({ timeout: 5000 });
-      await page.waitForTimeout(1500);
-      return;
+      clicked = true;
+      break;
     }
   }
-  throw new Error("Like button not found — LinkedIn may have updated its DOM");
+  if (!clicked) throw new Error("Like button not found — LinkedIn may have updated its DOM");
+  await page.waitForTimeout(1500);
 }
 
 async function commentPost(page: any, url: string, text: string) {
   if (!text) throw new Error("No comment text provided");
-
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3000);
 
   // Open the comment box
-  const commentTriggers = [
+  const commentBtnSelectors = [
     'button[aria-label*="comment"]',
     'button.comment-button',
     '[data-control-name="comment"]',
   ];
-  for (const sel of commentTriggers) {
+  for (const sel of commentBtnSelectors) {
     const btn = page.locator(sel).first();
-    if ((await btn.count()) > 0) {
+    if (await btn.count() > 0) {
       await btn.click({ timeout: 5000 });
       break;
     }
   }
   await page.waitForTimeout(1000);
 
-  // Find the editable comment field
+  // Type into the comment box
   const inputSelectors = [
     '.ql-editor[contenteditable="true"]',
     '[data-placeholder*="comment"]',
@@ -159,7 +149,7 @@ async function commentPost(page: any, url: string, text: string) {
   let typed = false;
   for (const sel of inputSelectors) {
     const inp = page.locator(sel).first();
-    if ((await inp.count()) > 0) {
+    if (await inp.count() > 0) {
       await inp.click();
       await inp.type(text, { delay: 25 });
       typed = true;
@@ -171,22 +161,24 @@ async function commentPost(page: any, url: string, text: string) {
 
   // Submit
   const submitSelectors = [
-    "button.comments-comment-box__submit-button",
-    'button[aria-label*="Post comment"]',
+    'button.comments-comment-box__submit-button',
     'button[type="submit"]',
+    'button[aria-label*="Post comment"]',
   ];
+  let submitted = false;
   for (const sel of submitSelectors) {
     const btn = page.locator(sel).first();
-    if ((await btn.count()) > 0) {
+    if (await btn.count() > 0) {
       await btn.click({ timeout: 5000 });
-      await page.waitForTimeout(2000);
-      return;
+      submitted = true;
+      break;
     }
   }
-  throw new Error("Submit button not found");
+  if (!submitted) throw new Error("Submit button not found");
+  await page.waitForTimeout(2000);
 }
 
-async function patchTask(id: number, status: string, error?: string) {
+async function patch(id: number, status: string, error?: string) {
   try {
     await fetch(`${BASE_URL}/api/browser-tasks/${id}`, {
       method: "PATCH",
@@ -198,7 +190,7 @@ async function patchTask(id: number, status: string, error?: string) {
       body: JSON.stringify({ status, error: error ?? null }),
     });
   } catch {
-    // Ignore reporting failures — main task outcome already logged
+    // ignore reporting failures
   }
 }
 
