@@ -110,6 +110,17 @@ const DDL: string[] = [
      meta TEXT,
      created_at INTEGER NOT NULL
    )`,
+  `CREATE TABLE IF NOT EXISTS browser_tasks (
+   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+   type TEXT NOT NULL,
+   url TEXT NOT NULL,
+   content TEXT,
+   status TEXT NOT NULL DEFAULT 'pending',
+   error TEXT,
+   created_at INTEGER NOT NULL,
+   updated_at INTEGER NOT NULL
+ )`,
 ];
 
 async function migrate(c: Client): Promise<void> {
@@ -515,6 +526,60 @@ export async function analyticsSummary(accountId: number) {
       .map(([week, count]) => ({ week, count })),
     lastPublishedAt: published[0]?.published_at ?? null,
   };
+}
+
+// ── Browser task helpers ──────────────────────────────────────────────────────
+
+export interface BrowserTask {
+  id: number;
+  account_id: number;
+  type: string;
+  url: string;
+  content: string | null;
+  status: string;
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export async function createBrowserTask(input: {
+  account_id: number;
+  type: string;
+  url: string;
+  content?: string | null;
+}): Promise<BrowserTask> {
+  const now = Date.now();
+  const { lastInsertRowid } = await run(
+    `INSERT INTO browser_tasks (account_id, type, url, content, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+    [input.account_id, input.type, input.url, input.content ?? null, now, now]
+  );
+  return (await getBrowserTask(lastInsertRowid))!;
+}
+
+export function getBrowserTask(id: number): Promise<BrowserTask | undefined> {
+  return one<BrowserTask>("SELECT * FROM browser_tasks WHERE id = ?", [id]);
+}
+
+export function listPendingBrowserTasks(accountId: number): Promise<BrowserTask[]> {
+  return all<BrowserTask>(
+    "SELECT * FROM browser_tasks WHERE account_id = ? AND status = 'pending' ORDER BY created_at ASC",
+    [accountId]
+  );
+}
+
+export async function updateBrowserTask(
+  id: number,
+  fields: Partial<Pick<BrowserTask, "status" | "error">>
+): Promise<BrowserTask | undefined> {
+  if (Object.keys(fields).length === 0) return getBrowserTask(id);
+  const { clause, args } = setClause(fields);
+  await run(`UPDATE browser_tasks SET ${clause}, updated_at = ? WHERE id = ?`, [
+    ...args,
+    Date.now(),
+    id,
+  ]);
+  return getBrowserTask(id);
 }
 
 function isoWeekKey(d: Date): string {

@@ -373,6 +373,92 @@ function textOf(msg: Anthropic.Message): string {
     .trim();
 }
 
+export type ConsoleActionType =
+  | "create_post"
+  | "like_post"
+  | "comment_post"
+  | "open_url"
+  | "clarify"
+  | "unknown";
+
+export interface ParsedCommand {
+  action: ConsoleActionType;
+  topic?: string;
+  url?: string;
+  commentGoal?: string;
+  tone?: string;
+  clarifyQuestion?: string;
+  response: string;
+}
+
+export async function parseConsoleCommand(
+  command: string,
+  history: Array<{ role: "user" | "assistant"; content: string }>,
+  voice?: Voice
+): Promise<ParsedCommand> {
+  const systemPrompt = [
+    "You are the command parser for a LinkedIn AI assistant console.",
+    "Parse the user's natural language command and return ONLY a valid JSON object.",
+    "",
+    "Actions:",
+    '- "create_post": user wants to write/draft/publish a LinkedIn post',
+    '- "like_post": user wants to like a specific post (needs URL)',
+    '- "comment_post": user wants to comment on a specific post (needs URL + what to say)',
+    '- "open_url": user wants to navigate to a LinkedIn URL or profile',
+    '- "clarify": you need more info to proceed',
+    '- "unknown": cannot understand the request',
+    "",
+    "Return exactly this JSON structure (no prose, no markdown):",
+    "{",
+    '  "action": "<action>",',
+    '  "topic": "<topic for create_post, or null>",',
+    '  "url": "<LinkedIn URL for like/comment/open, or null>",',
+    '  "commentGoal": "<what the comment should express, or null>",',
+    '  "tone": "<professional|casual|bold|inspirational, or null>",',
+    '  "clarifyQuestion": "<question to ask if clarify, or null>",',
+    '  "response": "<friendly 1-sentence status message>"',
+    "}",
+    "",
+    "Note: LinkedIn Stories were discontinued in 2021. If asked about stories, redirect to create_post.",
+  ].join("\n");
+
+  const msgs: Array<{ role: "user" | "assistant"; content: string }> = [
+    ...history.slice(-10),
+    { role: "user", content: command },
+  ];
+
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 400,
+    system: systemPrompt,
+    messages: msgs,
+  });
+
+  const raw = textOf(msg).trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  const jsonStr = start >= 0 && end >= 0 ? raw.slice(start, end + 1) : raw;
+
+  try {
+    const p = JSON.parse(jsonStr);
+    return {
+      action: (p.action as ConsoleActionType) || "unknown",
+      topic: p.topic || undefined,
+      url: p.url || undefined,
+      commentGoal: p.commentGoal || undefined,
+      tone: p.tone || undefined,
+      clarifyQuestion: p.clarifyQuestion || undefined,
+      response: p.response || "On it.",
+    };
+  } catch {
+    return {
+      action: "unknown",
+      response:
+        "I didn't catch that. Try: 'write a post about [topic]', 'like [URL]', or 'comment on [URL] saying [message]'.",
+    };
+  }
+}
+
 /**
  * Draft a thoughtful comment reply to someone else's post. This is for the
  * human-in-the-loop engagement queue: the user reviews/edits and posts it

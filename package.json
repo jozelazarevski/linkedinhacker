@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "worker": "tsx scripts/worker.ts",
-    "db:init": "tsx scripts/init-db.ts"
+    "db:init": "tsx scripts/init-db.ts",
+    "browser-agent": "tsx scripts/browser-agent.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -24,5 +25,8 @@
     "@types/react-dom": "^18.3.0",
     "tsx": "^4.19.1",
     "typescript": "^5.5.4"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.48.0"
   }
 }

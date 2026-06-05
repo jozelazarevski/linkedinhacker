@@ -8,6 +8,7 @@ import Calendar from "./components/Calendar";
 import Engage from "./components/Engage";
 import Cockpit from "./components/Cockpit";
 import Analytics from "./components/Analytics";
+import Console from "./components/Console";
 
 interface Me {
   configured: boolean;
@@ -21,7 +22,7 @@ interface Me {
   } | null;
 }
 
-type Tab = "compose" | "posts" | "calendar" | "engage" | "cockpit" | "analytics";
+type Tab = "compose" | "posts" | "calendar" | "engage" | "cockpit" | "analytics" | "console";
 
 export default function Home() {
   const [me, setMe] = useState<Me | null>(null);
@@ -139,6 +140,7 @@ export default function Home() {
               ["engage", "💬 Engage"],
               ["cockpit", "🎯 Cockpit"],
               ["analytics", "📊 Analytics"],
+              ["console", "🖥️ Console"],
             ] as [Tab, string][]
           ).map(([key, label]) => (
             <div
@@ -161,6 +163,9 @@ export default function Home() {
         {tab === "engage" && <Engage aiEnabled={me.aiEnabled} />}
         {tab === "cockpit" && <Cockpit aiEnabled={me.aiEnabled} />}
         {tab === "analytics" && <Analytics refreshKey={refreshKey} />}
+        {tab === "console" && (
+          <Console aiEnabled={me.aiEnabled} tokenExpired={me.account.tokenExpired} />
+        )}
       </div>
     </>
   );
