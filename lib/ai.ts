@@ -365,6 +365,41 @@ export async function suggestNextPosts(opts: {
   throw new Error("Could not parse suggestions. Please try again.");
 }
 
+/**
+ * Draft a comment for a LinkedIn post when we only have the URL (no post text).
+ * Produces a genuine, value-adding comment the user can edit to be post-specific.
+ */
+export async function draftCommentForUrl(opts: {
+  url: string;
+  intent?: string;
+  voice?: Voice;
+}): Promise<string> {
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 300,
+    system: [
+      "You help a professional write genuine, value-adding LinkedIn comments.",
+      "You don't have the post text — write a strong 1-3 sentence comment that adds a specific",
+      "insight or thoughtful perspective. Don't mention you haven't seen the post.",
+      "The user will tailor it before posting. Write a solid starting point.",
+      AI_TELLS,
+      "\n" + voicePrompt(opts.voice),
+    ].join(" "),
+    messages: [
+      {
+        role: "user",
+        content: [
+          opts.intent
+            ? `Comment intent: ${opts.intent}`
+            : "Goal: add a thoughtful, valuable perspective.",
+          `LinkedIn post URL: ${opts.url}`,
+        ].join("\n"),
+      },
+    ],
+  });
+  return textOf(msg);
+}
+
 function textOf(msg: Anthropic.Message): string {
   return msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

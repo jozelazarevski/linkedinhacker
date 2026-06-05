@@ -9,6 +9,7 @@ import Engage from "./components/Engage";
 import Cockpit from "./components/Cockpit";
 import Analytics from "./components/Analytics";
 import Console from "./components/Console";
+import BatchEngage from "./components/BatchEngage";
 
 interface Me {
   configured: boolean;
@@ -22,7 +23,7 @@ interface Me {
   } | null;
 }
 
-type Tab = "compose" | "posts" | "calendar" | "engage" | "cockpit" | "analytics" | "console";
+type Tab = "compose" | "posts" | "calendar" | "engage" | "cockpit" | "analytics" | "console" | "batch";
 
 export default function Home() {
   const [me, setMe] = useState<Me | null>(null);
@@ -141,6 +142,7 @@ export default function Home() {
               ["cockpit", "🎯 Cockpit"],
               ["analytics", "📊 Analytics"],
               ["console", "🖥️ Console"],
+              ["batch", "📋 Batch Engage"],
             ] as [Tab, string][]
           ).map(([key, label]) => (
             <div
@@ -166,6 +168,7 @@ export default function Home() {
         {tab === "console" && (
           <Console aiEnabled={me.aiEnabled} tokenExpired={me.account.tokenExpired} />
         )}
+        {tab === "batch" && <BatchEngage aiEnabled={me.aiEnabled} />}
       </div>
     </>
   );
