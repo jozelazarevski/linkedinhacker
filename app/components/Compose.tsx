@@ -58,6 +58,9 @@ export default function Compose({
   const [suggestions, setSuggestions] = useState<NextPostIdea[]>([]);
   const [suggestBusy, setSuggestBusy] = useState(false);
 
+  // Humanize review for a generated draft
+  const [draftReview, setDraftReview] = useState<{ before: string; after: string } | null>(null);
+
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -132,6 +135,22 @@ export default function Compose({
     if (review) setText(review.after);
     setReview(null);
     setMsg({ kind: "info", text: "Applied the humanized version." });
+  }
+
+  async function humanizeDraft(d: string) {
+    setAiBusy(true);
+    setMsg(null);
+    try {
+      const { draft } = await api<{ draft: string }>("/api/ai/draft", {
+        method: "POST",
+        body: JSON.stringify({ humanize: d, level }),
+      });
+      setDraftReview({ before: d, after: draft });
+    } catch (e: any) {
+      setMsg({ kind: "error", text: e.message });
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   async function suggest() {
@@ -355,9 +374,25 @@ export default function Compose({
                     <button className="secondary" onClick={() => setText(d)}>
                       Use this draft
                     </button>
+                    <button className="ghost" disabled={aiBusy} onClick={() => humanizeDraft(d)} title="Rewrite this draft to read more human / on-voice">
+                      🧑 Humanize
+                    </button>
                   </div>
                 </div>
               ))}
+              {draftReview && (
+                <HumanizeReview
+                  before={draftReview.before}
+                  after={draftReview.after}
+                  onAccept={() => {
+                    setText(draftReview.after);
+                    setDraftReview(null);
+                    setDrafts([]);
+                    setMsg({ kind: "info", text: "Loaded the humanized draft below." });
+                  }}
+                  onDiscard={() => setDraftReview(null)}
+                />
+              )}
             </div>
           )}
         </div>
