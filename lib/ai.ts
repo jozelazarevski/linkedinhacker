@@ -365,6 +365,62 @@ export async function suggestNextPosts(opts: {
   throw new Error("Could not parse suggestions. Please try again.");
 }
 
+export interface HookVariant {
+  hook: string; // the opening line
+  style: string; // e.g. "bold claim", "question", "story open", "stat"
+  why: string; // why it works
+}
+
+/**
+ * Generate distinct opening-line ("hook") variants for a post. The hook is the
+ * single biggest driver of reach on LinkedIn — it decides whether the rest of
+ * the post is ever read. Voice-matched.
+ */
+export async function generateHooks(opts: {
+  draft: string;
+  voice?: Voice;
+  count?: number;
+}): Promise<HookVariant[]> {
+  const n = Math.min(Math.max(opts.count ?? 5, 1), 8);
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 1200,
+    system: [
+      "You are a LinkedIn hook specialist. Given a post, write distinct, scroll-stopping FIRST LINES",
+      "(hooks) for it. A great hook creates an information gap or a strong reaction in under ~12 words,",
+      "promises the payoff, and never gives the whole point away. Vary the approach across the set",
+      "(bold claim, surprising stat, pointed question, story cold-open, contrarian take, vulnerable admission).",
+      "No clickbait, no 'comment X below', no fake urgency.",
+      voicePrompt(opts.voice),
+      `\nReturn ONLY a JSON array of exactly ${n} objects, each: {"hook","style","why"}. ` +
+        '"hook" = the opening line, "style" = the approach, "why" = one phrase on why it works. ' +
+        "No markdown, no code fences.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    messages: [{ role: "user", content: `The post:\n${opts.draft}` }],
+  });
+
+  const raw = textOf(msg);
+  const jsonText = raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1);
+  try {
+    const arr = JSON.parse(jsonText);
+    if (Array.isArray(arr)) {
+      return arr
+        .filter((x) => x && typeof x === "object")
+        .map((x) => ({
+          hook: String(x.hook ?? ""),
+          style: String(x.style ?? ""),
+          why: String(x.why ?? ""),
+        }))
+        .filter((h) => h.hook);
+    }
+  } catch {
+    /* fall through */
+  }
+  throw new Error("Could not parse hooks. Please try again.");
+}
+
 function textOf(msg: Anthropic.Message): string {
   return msg.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")

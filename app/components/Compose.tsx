@@ -25,6 +25,12 @@ interface NextPostIdea {
   format: string;
 }
 
+interface HookVariant {
+  hook: string;
+  style: string;
+  why: string;
+}
+
 export default function Compose({
   aiEnabled,
   tokenExpired,
@@ -60,6 +66,10 @@ export default function Compose({
 
   // Humanize review for a generated draft
   const [draftReview, setDraftReview] = useState<{ before: string; after: string } | null>(null);
+
+  // Hook Lab
+  const [hooks, setHooks] = useState<HookVariant[]>([]);
+  const [hooksBusy, setHooksBusy] = useState(false);
 
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -135,6 +145,35 @@ export default function Compose({
     if (review) setText(review.after);
     setReview(null);
     setMsg({ kind: "info", text: "Applied the humanized version." });
+  }
+
+  async function genHooks() {
+    if (!text.trim()) return;
+    setHooksBusy(true);
+    setMsg(null);
+    try {
+      const { hooks } = await api<{ hooks: HookVariant[] }>("/api/ai/hooks", {
+        method: "POST",
+        body: JSON.stringify({ draft: text, count: 5 }),
+      });
+      setHooks(hooks);
+    } catch (e: any) {
+      setMsg({ kind: "error", text: e.message });
+    } finally {
+      setHooksBusy(false);
+    }
+  }
+
+  function applyHook(hook: string) {
+    const lines = text.split("\n");
+    const idx = lines.findIndex((l) => l.trim().length > 0);
+    if (idx === -1) setText(hook);
+    else {
+      lines[idx] = hook;
+      setText(lines.join("\n"));
+    }
+    setHooks([]);
+    setMsg({ kind: "info", text: "Swapped in the new hook." });
   }
 
   async function humanizeDraft(d: string) {
@@ -425,6 +464,9 @@ export default function Compose({
             <button className="ghost" disabled={aiBusy} onClick={() => improve("Add a clear call to discussion at the end without being spammy")}>
               💬 Add CTA
             </button>
+            <button className="ghost" disabled={hooksBusy} onClick={genHooks} title="Generate scroll-stopping opening lines for this post">
+              {hooksBusy ? <span className="spin" /> : "🪝 Hook lab"}
+            </button>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <button className="ghost" disabled={aiBusy} onClick={humanize} title="Rewrite to remove AI tells and match your trained voice">
                 🧑 Humanize / match my voice
@@ -451,6 +493,29 @@ export default function Compose({
             onAccept={acceptReview}
             onDiscard={() => setReview(null)}
           />
+        )}
+
+        {hooks.length > 0 && (
+          <div className="list-item" style={{ marginTop: 14 }}>
+            <div className="meta">
+              <span className="pill scheduled">🪝 hook lab</span>
+              <span>pick a stronger opening line</span>
+            </div>
+            {hooks.map((h, i) => (
+              <div key={i} style={{ padding: "8px 0", borderTop: i ? "1px solid var(--border)" : "none" }}>
+                <div className="body" style={{ fontWeight: 600 }}>{h.hook}</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  {h.style}{h.why ? ` — ${h.why}` : ""}
+                </div>
+                <div className="btn-row" style={{ marginTop: 6 }}>
+                  <button className="secondary" onClick={() => applyHook(h.hook)}>Use this hook</button>
+                </div>
+              </div>
+            ))}
+            <div className="btn-row">
+              <button className="ghost" onClick={() => setHooks([])}>Close</button>
+            </div>
+          </div>
         )}
 
         <div className="row" style={{ marginTop: 12 }}>

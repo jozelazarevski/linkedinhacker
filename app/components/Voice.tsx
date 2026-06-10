@@ -69,10 +69,12 @@ export default function Voice({ aiEnabled }: { aiEnabled: boolean }) {
           {open ? "Hide" : trained ? "Edit" : "Set up"}
         </button>
       </div>
-      <p className="sub" style={{ marginTop: 8, marginBottom: open ? 16 : 0 }}>
+      <p className="sub" style={{ marginTop: 8, marginBottom: 10 }}>
         Hate generic AI writing? Paste a few of your own posts and everything the assistant writes —
         drafts, rewrites, comments — will sound like <em>you</em>, not a robot.
       </p>
+
+      <VoiceStrength text={profile?.samples ?? ""} hasGuide={Boolean(profile?.styleGuide)} />
 
       {open && (
         <>
@@ -113,6 +115,42 @@ export default function Voice({ aiEnabled }: { aiEnabled: boolean }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// Pure-computation indicator of how well-trained the voice is, based on the
+// volume of samples and whether a style guide has been distilled.
+function VoiceStrength({ text, hasGuide }: { text: string; hasGuide: boolean }) {
+  const chars = text.trim().length;
+  // Score: 0–100 from sample volume (caps at ~8k chars) plus a style-guide bonus.
+  const volume = Math.min(80, Math.round((chars / 8000) * 80));
+  const score = Math.min(100, volume + (hasGuide ? 20 : 0));
+
+  let label = "Not trained";
+  let color = "var(--muted)";
+  if (chars === 0) {
+    label = "Not trained — add a few of your posts";
+  } else if (score < 35) {
+    label = "Weak — add more samples for a sharper match";
+    color = "var(--red)";
+  } else if (score < 70) {
+    label = "Good — more samples will sharpen it";
+    color = "var(--amber)";
+  } else {
+    label = "Strong — your voice is well-trained";
+    color = "var(--green)";
+  }
+
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 4 }}>
+        <span className="muted">Voice strength</span>
+        <span style={{ color }}>{label}</span>
+      </div>
+      <div style={{ height: 8, background: "var(--panel-2)", borderRadius: 999, overflow: "hidden" }}>
+        <div style={{ width: `${score}%`, height: "100%", background: color }} />
+      </div>
     </div>
   );
 }
