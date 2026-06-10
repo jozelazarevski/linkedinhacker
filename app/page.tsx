@@ -7,6 +7,7 @@ import Posts from "./components/Posts";
 import Calendar from "./components/Calendar";
 import Engage from "./components/Engage";
 import Cockpit from "./components/Cockpit";
+import Dashboard from "./components/Dashboard";
 import Analytics from "./components/Analytics";
 
 interface Me {
@@ -21,7 +22,7 @@ interface Me {
   } | null;
 }
 
-type Tab = "compose" | "posts" | "calendar" | "engage" | "cockpit" | "analytics";
+type Tab = "compose" | "posts" | "calendar" | "engage" | "cockpit" | "dashboard" | "analytics";
 
 export default function Home() {
   const [me, setMe] = useState<Me | null>(null);
@@ -138,6 +139,7 @@ export default function Home() {
               ["calendar", "📅 Calendar"],
               ["engage", "💬 Engage"],
               ["cockpit", "🎯 Cockpit"],
+              ["dashboard", "📈 Dashboard"],
               ["analytics", "📊 Analytics"],
             ] as [Tab, string][]
           ).map(([key, label]) => (
@@ -160,6 +162,7 @@ export default function Home() {
         )}
         {tab === "engage" && <Engage aiEnabled={me.aiEnabled} />}
         {tab === "cockpit" && <Cockpit aiEnabled={me.aiEnabled} />}
+        {tab === "dashboard" && <Dashboard refreshKey={refreshKey} />}
         {tab === "analytics" && <Analytics refreshKey={refreshKey} />}
       </div>
     </>

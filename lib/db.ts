@@ -110,6 +110,23 @@ const DDL: string[] = [
      meta TEXT,
      created_at INTEGER NOT NULL
    )`,
+  // Manually-entered outcome metrics per published post (LinkedIn doesn't expose
+  // these via API for personal profiles).
+  `CREATE TABLE IF NOT EXISTS post_metrics (
+     post_id     INTEGER PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+     impressions INTEGER NOT NULL DEFAULT 0,
+     reactions   INTEGER NOT NULL DEFAULT 0,
+     comments    INTEGER NOT NULL DEFAULT 0,
+     reposts     INTEGER NOT NULL DEFAULT 0,
+     updated_at  INTEGER NOT NULL
+   )`,
+  // Follower-count snapshots over time (manually recorded).
+  `CREATE TABLE IF NOT EXISTS follower_snapshots (
+     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+     account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+     followers   INTEGER NOT NULL,
+     recorded_at INTEGER NOT NULL
+   )`,
 ];
 
 async function migrate(c: Client): Promise<void> {
@@ -524,6 +541,144 @@ export async function analyticsSummary(accountId: number) {
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .map(([week, count]) => ({ week, count })),
     lastPublishedAt: published[0]?.published_at ?? null,
+  };
+}
+
+// ── Success metrics (manual outcome tracking) ─────────────────────────────────
+
+export interface PostMetrics {
+  post_id: number;
+  impressions: number;
+  reactions: number;
+  comments: number;
+  reposts: number;
+  updated_at: number;
+}
+
+export async function upsertPostMetrics(input: {
+  post_id: number;
+  impressions?: number;
+  reactions?: number;
+  comments?: number;
+  reposts?: number;
+}): Promise<void> {
+  await run(
+    `INSERT INTO post_metrics (post_id, impressions, reactions, comments, reposts, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(post_id) DO UPDATE SET
+       impressions = excluded.impressions,
+       reactions   = excluded.reactions,
+       comments    = excluded.comments,
+       reposts     = excluded.reposts,
+       updated_at  = excluded.updated_at`,
+    [
+      input.post_id,
+      Math.max(0, input.impressions ?? 0),
+      Math.max(0, input.reactions ?? 0),
+      Math.max(0, input.comments ?? 0),
+      Math.max(0, input.reposts ?? 0),
+      Date.now(),
+    ]
+  );
+}
+
+export async function listPostMetrics(accountId: number): Promise<PostMetrics[]> {
+  return all<PostMetrics>(
+    `SELECT m.* FROM post_metrics m
+     JOIN posts p ON p.id = m.post_id
+     WHERE p.account_id = ?`,
+    [accountId]
+  );
+}
+
+export async function addFollowerSnapshot(accountId: number, followers: number): Promise<void> {
+  await run("INSERT INTO follower_snapshots (account_id, followers, recorded_at) VALUES (?, ?, ?)", [
+    accountId,
+    Math.max(0, Math.floor(followers)),
+    Date.now(),
+  ]);
+}
+
+export async function listFollowerSnapshots(
+  accountId: number
+): Promise<{ followers: number; recorded_at: number }[]> {
+  return all<{ followers: number; recorded_at: number }>(
+    "SELECT followers, recorded_at FROM follower_snapshots WHERE account_id = ? ORDER BY recorded_at ASC",
+    [accountId]
+  );
+}
+
+/** Aggregated success dashboard: activity the app tracks + outcomes you record. */
+export async function dashboardSummary(accountId: number) {
+  const posts = await listPosts(accountId);
+  const published = posts.filter((p) => p.status === "published");
+  const metrics = await listPostMetrics(accountId);
+  const metricsByPost = new Map(metrics.map((m) => [m.post_id, m]));
+
+  const sum = (k: "impressions" | "reactions" | "comments" | "reposts") =>
+    metrics.reduce((acc, m) => acc + (m[k] || 0), 0);
+
+  const totalReactions = sum("reactions");
+  const totalImpressions = sum("impressions");
+  const measured = metrics.length;
+
+  // Consistency streak: consecutive ISO weeks (ending this week) with ≥1 post.
+  const weeks = new Set(
+    published.filter((p) => p.published_at).map((p) => isoWeekKey(new Date(p.published_at!)))
+  );
+  let streak = 0;
+  const cursor = new Date();
+  for (;;) {
+    if (weeks.has(isoWeekKey(cursor))) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 7);
+    } else break;
+  }
+
+  // Top posts by reactions (only those with recorded metrics).
+  const topPosts = published
+    .map((p) => ({
+      id: p.id,
+      commentary: p.commentary,
+      published_at: p.published_at,
+      metrics: metricsByPost.get(p.id) ?? null,
+    }))
+    .filter((p) => p.metrics)
+    .sort((a, b) => (b.metrics!.reactions || 0) - (a.metrics!.reactions || 0))
+    .slice(0, 5);
+
+  // All published posts (for metric entry), newest first.
+  const publishedPosts = published.map((p) => ({
+    id: p.id,
+    commentary: p.commentary,
+    published_at: p.published_at,
+    metrics: metricsByPost.get(p.id) ?? null,
+  }));
+
+  const followers = await listFollowerSnapshots(accountId);
+  const followerGrowth =
+    followers.length >= 2 ? followers[followers.length - 1].followers - followers[0].followers : 0;
+
+  return {
+    totals: {
+      published: published.length,
+      measuredPosts: measured,
+      totalImpressions,
+      totalReactions,
+      totalComments: sum("comments"),
+      avgReactions: measured ? Math.round((totalReactions / measured) * 10) / 10 : 0,
+      streakWeeks: streak,
+      humanizePasses: await countEvent(accountId, "humanized"),
+      hooksGenerated: await countEvent(accountId, "hooks_generated"),
+      commentsUsed: (await listEngagements(accountId)).filter(
+        (e) => e.status === "used" || e.status === "approved"
+      ).length,
+      latestFollowers: followers.length ? followers[followers.length - 1].followers : null,
+      followerGrowth,
+    },
+    followers,
+    topPosts,
+    publishedPosts,
   };
 }
 

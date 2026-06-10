@@ -359,6 +359,27 @@ button:disabled {
   text-align: left;
 }
 
+.metric-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.metric-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.metric-field input {
+  width: 90px;
+  padding: 6px 8px;
+}
+
 .diff {
   white-space: pre-wrap;
   line-height: 1.7;
