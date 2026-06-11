@@ -71,6 +71,10 @@ export default function Compose({
   const [hooks, setHooks] = useState<HookVariant[]>([]);
   const [hooksBusy, setHooksBusy] = useState(false);
 
+  // Attribution: what format/hook this post used (for dashboard insights)
+  const [composeFormat, setComposeFormat] = useState<string | null>(null);
+  const [composeHook, setComposeHook] = useState<string | null>(null);
+
   // Templates
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -164,7 +168,7 @@ export default function Compose({
     }
   }
 
-  function applyHook(hook: string) {
+  function applyHook(hook: string, style: string) {
     const lines = text.split("\n");
     const idx = lines.findIndex((l) => l.trim().length > 0);
     if (idx === -1) setText(hook);
@@ -172,6 +176,7 @@ export default function Compose({
       lines[idx] = hook;
       setText(lines.join("\n"));
     }
+    setComposeHook(style || null);
     setHooks([]);
     setMsg({ kind: "info", text: "Swapped in the new hook." });
   }
@@ -234,7 +239,7 @@ export default function Compose({
       }
       const { post } = await api<{ post: { id: number } }>("/api/posts", {
         method: "POST",
-        body: JSON.stringify({ commentary: text, visibility, scheduledAt }),
+        body: JSON.stringify({ commentary: text, visibility, scheduledAt, format: composeFormat, hookStyle: composeHook }),
       });
 
       if (action === "publish") {
@@ -248,6 +253,8 @@ export default function Compose({
       setText("");
       setWhen("");
       setDrafts([]);
+      setComposeFormat(null);
+      setComposeHook(null);
       onChange();
     } catch (e: any) {
       setMsg({ kind: "error", text: e.message });
@@ -296,6 +303,7 @@ export default function Compose({
                   className="secondary"
                   onClick={() => {
                     setText(`${s.hook}\n\n${s.angle}`.trim());
+                    setComposeFormat(s.format || null);
                     setSuggestions([]);
                     setMsg({ kind: "info", text: "Loaded the idea below — refine, humanize, then publish." });
                   }}
@@ -341,6 +349,7 @@ export default function Compose({
                   className="secondary"
                   onClick={() => {
                     setText(selectedTemplate.scaffold);
+                    setComposeFormat(selectedTemplate.name);
                     setMsg({ kind: "info", text: `Inserted the "${selectedTemplate.name}" scaffold below — edit away.` });
                   }}
                 >
@@ -508,7 +517,7 @@ export default function Compose({
                   {h.style}{h.why ? ` — ${h.why}` : ""}
                 </div>
                 <div className="btn-row" style={{ marginTop: 6 }}>
-                  <button className="secondary" onClick={() => applyHook(h.hook)}>Use this hook</button>
+                  <button className="secondary" onClick={() => applyHook(h.hook, h.style)}>Use this hook</button>
                 </div>
               </div>
             ))}

@@ -71,6 +71,8 @@ const DDL: string[] = [
      published_at INTEGER,
      linkedin_urn TEXT,
      error TEXT,
+     format TEXT,
+     hook_style TEXT,
      created_at INTEGER NOT NULL,
      updated_at INTEGER NOT NULL
    )`,
@@ -136,6 +138,8 @@ async function migrate(c: Client): Promise<void> {
   // Backfill columns on databases created before these fields existed.
   await addColumnIfMissing(c, "targets", "tags", "TEXT");
   await addColumnIfMissing(c, "targets", "priority", "INTEGER NOT NULL DEFAULT 0");
+  await addColumnIfMissing(c, "posts", "format", "TEXT");
+  await addColumnIfMissing(c, "posts", "hook_style", "TEXT");
 }
 
 async function addColumnIfMissing(c: Client, table: string, column: string, decl: string) {
@@ -259,6 +263,8 @@ export interface Post {
   published_at: number | null;
   linkedin_urn: string | null;
   error: string | null;
+  format: string | null;
+  hook_style: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -269,17 +275,21 @@ export async function createPost(input: {
   visibility?: string;
   status?: string;
   scheduled_at?: number | null;
+  format?: string | null;
+  hook_style?: string | null;
 }): Promise<Post> {
   const now = Date.now();
   const { lastInsertRowid } = await run(
-    `INSERT INTO posts (account_id, commentary, visibility, status, scheduled_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO posts (account_id, commentary, visibility, status, scheduled_at, format, hook_style, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.account_id,
       input.commentary,
       input.visibility ?? "PUBLIC",
       input.status ?? "draft",
       input.scheduled_at ?? null,
+      input.format ?? null,
+      input.hook_style ?? null,
       now,
       now,
     ]
@@ -655,6 +665,35 @@ export async function dashboardSummary(accountId: number) {
     metrics: metricsByPost.get(p.id) ?? null,
   }));
 
+  // Group published posts by a key (format / hook) → count + avg reactions of
+  // the ones with recorded metrics. Reveals what's actually working.
+  const groupBy = (keyOf: (p: Post) => string | null) => {
+    const map: Record<string, { count: number; measured: number; reactions: number; impressions: number }> = {};
+    for (const p of published) {
+      const key = keyOf(p);
+      if (!key) continue;
+      const g = (map[key] ||= { count: 0, measured: 0, reactions: 0, impressions: 0 });
+      g.count++;
+      const m = metricsByPost.get(p.id);
+      if (m) {
+        g.measured++;
+        g.reactions += m.reactions || 0;
+        g.impressions += m.impressions || 0;
+      }
+    }
+    return Object.entries(map)
+      .map(([key, g]) => ({
+        key,
+        count: g.count,
+        measured: g.measured,
+        avgReactions: g.measured ? Math.round((g.reactions / g.measured) * 10) / 10 : 0,
+        avgImpressions: g.measured ? Math.round(g.impressions / g.measured) : 0,
+      }))
+      .sort((a, b) => b.avgReactions - a.avgReactions);
+  };
+  const byFormat = groupBy((p) => p.format);
+  const byHook = groupBy((p) => p.hook_style);
+
   const followers = await listFollowerSnapshots(accountId);
   const followerGrowth =
     followers.length >= 2 ? followers[followers.length - 1].followers - followers[0].followers : 0;
@@ -679,6 +718,8 @@ export async function dashboardSummary(accountId: number) {
     followers,
     topPosts,
     publishedPosts,
+    byFormat,
+    byHook,
   };
 }
 

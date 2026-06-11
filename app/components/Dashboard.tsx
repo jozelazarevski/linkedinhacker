@@ -34,6 +34,15 @@ interface Dash {
   followers: { followers: number; recorded_at: number }[];
   topPosts: PostRow[];
   publishedPosts: PostRow[];
+  byFormat: Insight[];
+  byHook: Insight[];
+}
+interface Insight {
+  key: string;
+  count: number;
+  measured: number;
+  avgReactions: number;
+  avgImpressions: number;
 }
 
 export default function Dashboard({ refreshKey }: { refreshKey: number }) {
@@ -193,6 +202,20 @@ export default function Dashboard({ refreshKey }: { refreshKey: number }) {
         </div>
       )}
 
+      {(data.byFormat.length > 0 || data.byHook.length > 0) && (
+        <div className="card">
+          <h2>🔬 What&apos;s working</h2>
+          <p className="sub">
+            Avg reactions by format and hook style, for posts you&apos;ve tagged and measured. Lean
+            into the winners.
+          </p>
+          <div className="row" style={{ alignItems: "flex-start" }}>
+            <InsightList title="By format" items={data.byFormat} />
+            <InsightList title="By hook style" items={data.byHook} />
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <h2>✍️ Record post metrics</h2>
         <p className="sub">
@@ -205,6 +228,30 @@ export default function Dashboard({ refreshKey }: { refreshKey: number }) {
         ))}
       </div>
     </>
+  );
+}
+
+function InsightList({ title, items }: { title: string; items: Insight[] }) {
+  const measured = items.filter((i) => i.measured > 0);
+  const max = Math.max(1, ...measured.map((i) => i.avgReactions));
+  return (
+    <div>
+      <div className="muted" style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{title}</div>
+      {measured.length === 0 && (
+        <p className="muted" style={{ fontSize: 12 }}>Tag posts (use a template, suggestion, or hook) and record their reactions to see this.</p>
+      )}
+      {measured.map((it) => (
+        <div key={it.key} style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{it.key}</span>
+            <span><strong>{it.avgReactions}</strong> <span className="muted" style={{ fontSize: 11 }}>avg · {it.measured}p</span></span>
+          </div>
+          <div style={{ height: 8, background: "var(--panel-2)", borderRadius: 999, overflow: "hidden" }}>
+            <div style={{ width: `${(it.avgReactions / max) * 100}%`, height: "100%", background: "var(--green)" }} />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

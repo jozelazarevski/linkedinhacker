@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
     visibility,
     status,
     scheduled_at: scheduledAt,
+    format: typeof body.format === "string" ? body.format.slice(0, 60) : null,
+    hook_style: typeof body.hookStyle === "string" ? body.hookStyle.slice(0, 60) : null,
   });
 
   return NextResponse.json({ post }, { status: 201 });
